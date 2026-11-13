@@ -407,12 +407,21 @@ def append_to_server_excel(data: ServerExcelAppendRequest, db: Session = Depends
         raise HTTPException(status_code=500, detail=f"Excel'e kayıt sırasında hata oluştu: {str(e)}")
 
 @app.get("/api/server-excel/download")
-def download_today_server_excel():
-    """İş yeri sunucusundaki bugünün güncel Excel dosyasını indirir."""
-    status = ExcelService.get_today_status()
+def download_today_server_excel(date_str: Optional[str] = None):
+    """İş yeri sunucusundaki seçili veya bugünün güncel Excel dosyasını indirir."""
+    dt = None
+    if date_str:
+        cleaned = date_str.strip().split()[0]
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                dt = datetime.strptime(cleaned, fmt)
+                break
+            except ValueError:
+                pass
+    status = ExcelService.get_today_status(dt)
     file_path = Path(status["file_path"])
     if not file_path.exists():
-        file_path = ExcelService.ensure_daily_excel_file()
+        file_path = ExcelService.ensure_daily_excel_file(dt)
     
     return FileResponse(
         str(file_path),
@@ -433,9 +442,6 @@ def export_excel(
         query = query.join(Machine).filter(Machine.code == machine_code.upper())
     
     logs = query.order_by(MaintenanceLog.id.asc()).all()
-    if not logs:
-        # Kayıt yoksa tüm kayıtları ver
-        logs = db.query(MaintenanceLog).order_by(MaintenanceLog.id.asc()).all()
 
     file_path = ExcelService.export_shift_report(logs, report_date)
     return FileResponse(

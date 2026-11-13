@@ -78,6 +78,12 @@ function initDateAndShift() {
     opNameInput.value = currentUser.full_name;
   }
 
+  // Yapılan İşler & Excel Rapor sekmesi alanlarını hazırla
+  const exportDateInput = document.getElementById("excelFilterDate");
+  if (exportDateInput && !exportDateInput.value) {
+    exportDateInput.value = formatDateToIso(now);
+  }
+
   // Doruk Otomasyon sekmesi alanlarını hazırla
   const dorukDateEl = document.getElementById("dorukFilterDate");
   if (dorukDateEl && !dorukDateEl.value) {
@@ -225,6 +231,10 @@ function switchTab(tabId) {
       }
     }
   });
+
+  if (tabId === "excel-export") {
+    onDoneJobsDateChanged();
+  }
 
   if (window.lucide) lucide.createIcons();
 }
@@ -532,6 +542,96 @@ async function submitServerExcelLog(event) {
   }
 }
 
+// ----------------- VARDİYA DEVİR SAATLERİ (08:15 - 16:15 - 00:15) VE FİLTRELEME -----------------
+let onlyActiveShift = true; // Varsayılan: Aktif vardiya filtresi devrede (devir saatlerinden sonra boş başlar)
+let cachedServerExcelData = null;
+
+function getCurrentShiftCutoffInfo(dateObj = new Date()) {
+  const h = dateObj.getHours();
+  const m = dateObj.getMinutes();
+  const currentMinutes = h * 60 + m;
+
+  // 08:15 = 495 dk
+  // 16:15 = 975 dk
+  // 00:15 = 15 dk
+  if (currentMinutes >= 495 && currentMinutes < 975) {
+    return {
+      shiftName: "1. Vardiya (08:15 - 16:15)",
+      cutoffTimeStr: "08:15",
+      cutoffMinutes: 495,
+      sheetKey: "08.00",
+      nextCutoffStr: "16:15"
+    };
+  } else if (currentMinutes >= 975) {
+    return {
+      shiftName: "2. Vardiya (16:15 - 00:15)",
+      cutoffTimeStr: "16:15",
+      cutoffMinutes: 975,
+      sheetKey: "16.00",
+      nextCutoffStr: "00:15"
+    };
+  } else if (currentMinutes >= 15 && currentMinutes < 495) {
+    return {
+      shiftName: "3. Vardiya (00:15 - 08:15)",
+      cutoffTimeStr: "00:15",
+      cutoffMinutes: 15,
+      sheetKey: "24.00",
+      nextCutoffStr: "08:15"
+    };
+  } else {
+    // 00:00 - 00:15 arası
+    return {
+      shiftName: "2. Vardiya Devir (16:15 - 00:15)",
+      cutoffTimeStr: "16:15",
+      cutoffMinutes: 975,
+      sheetKey: "16.00",
+      nextCutoffStr: "00:15"
+    };
+  }
+}
+
+function isRecordInActiveShift(record, shiftInfo, isToday) {
+  if (!isToday) return true; // Başka bir gün seçilmişse tüm kayıtları göster
+
+  // Sayfa kontrolü: Kayıt o vardiyanın sheet'inde mi?
+  if (record.sheet && !record.sheet.includes(shiftInfo.sheetKey)) {
+    return false;
+  }
+
+  // Saat kontrolü
+  let recMinutes = null;
+  const timeStr = record.time_str || (record.description ? (record.description.match(/\[(\d{1,2}):(\d{2})\]/) || [])[1] : null);
+  if (timeStr) {
+    const parts = timeStr.split(":");
+    if (parts.length === 2) {
+      recMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    }
+  }
+
+  if (recMinutes !== null) {
+    if (shiftInfo.cutoffTimeStr === "08:15") {
+      return recMinutes >= 495 && recMinutes < 975;
+    } else if (shiftInfo.cutoffTimeStr === "16:15") {
+      return recMinutes >= 975;
+    } else if (shiftInfo.cutoffTimeStr === "00:15") {
+      return recMinutes >= 15 && recMinutes < 495;
+    }
+  }
+
+  return true;
+}
+
+function toggleServerExcelShiftFilter() {
+  onlyActiveShift = !onlyActiveShift;
+  renderServerExcelTable();
+}
+
+function downloadCurrentServerExcel() {
+  const dateVal = document.getElementById("formDateInput")?.value || "";
+  const url = dateVal ? `/api/server-excel/download?date_str=${encodeURIComponent(dateVal)}` : "/api/server-excel/download";
+  window.open(url, "_blank");
+}
+
 // ----------------- SERVER EXCEL DURUMUNU YÜKLEME -----------------
 async function loadServerExcelStatus(dateStr = null) {
   try {
@@ -541,34 +641,81 @@ async function loadServerExcelStatus(dateStr = null) {
     const url = dateStr ? `/api/server-excel/status?date_str=${encodeURIComponent(dateStr)}` : "/api/server-excel/status";
     const res = await fetch(url);
     const data = await res.json();
-
-    const infoEl = document.getElementById("serverExcelInfo");
-    if (infoEl) {
-      infoEl.innerHTML = `Tarih: <b class="text-blue-700">${data.today_date_str}</b> | Dosya: <b class="text-slate-800">${data.month_folder} / ${data.file_name}</b> | Toplam Kayıt: <b class="text-blue-700">${data.records.length}</b>`;
-    }
-
-    const tbody = document.getElementById("serverExcelRowsBody");
-    if (!tbody) return;
-
-    if (data.records.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">Bu tarihe (${data.today_date_str}) henüz bu dosyaya kayıt girilmedi.</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = data.records.map((r) => `
-      <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-        <td class="p-2.5 text-center font-bold text-slate-500">${r.row}</td>
-        <td class="p-2.5 text-center font-medium text-slate-600 bg-slate-50/50">${r.sheet}</td>
-        <td class="p-2.5 font-bold text-blue-900">${r.area || r.line_and_machine || '-'}</td>
-        <td class="p-2.5 text-slate-700 font-medium">${r.description}</td>
-        <td class="p-2.5 text-center font-bold text-purple-700">${r.criterion_no}</td>
-        <td class="p-2.5 text-center font-bold text-slate-800">${r.time_spent} dk</td>
-        <td class="p-2.5 text-center font-semibold text-slate-700">${r.operator}</td>
-      </tr>
-    `).join("");
+    cachedServerExcelData = data;
+    renderServerExcelTable(dateStr);
   } catch (e) {
     console.error("Server Excel durumu alınamadı:", e);
   }
+}
+
+function renderServerExcelTable(dateStr = null) {
+  if (!cachedServerExcelData) return;
+  const data = cachedServerExcelData;
+  const now = new Date();
+  const todayIso = formatDateToIso(now);
+  const selectedDate = dateStr || document.getElementById("formDateInput")?.value || todayIso;
+  const isToday = selectedDate === todayIso;
+
+  const shiftInfo = getCurrentShiftCutoffInfo(now);
+
+  // Vardiya rozetini güncelle
+  const badgeEl = document.getElementById("activeShiftBadge");
+  if (badgeEl) {
+    badgeEl.innerText = isToday ? shiftInfo.shiftName : "Seçili Gün";
+  }
+
+  // Buton metnini ve stilini güncelle
+  const btnText = document.getElementById("shiftFilterBtnText");
+  const btnToggle = document.getElementById("btnToggleShiftFilter");
+  if (btnText && btnToggle) {
+    if (onlyActiveShift && isToday) {
+      btnText.innerText = `Sadece Aktif Vardiya (${shiftInfo.cutoffTimeStr} sonrası)`;
+      btnToggle.className = "px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs";
+    } else {
+      btnText.innerText = "Günün Tüm Kayıtları";
+      btnToggle.className = "px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs";
+    }
+  }
+
+  // Kayıtları filtrele
+  let displayRecords = data.records;
+  if (onlyActiveShift && isToday) {
+    displayRecords = data.records.filter(r => isRecordInActiveShift(r, shiftInfo, isToday));
+  }
+
+  const infoEl = document.getElementById("serverExcelInfo");
+  if (infoEl) {
+    infoEl.innerHTML = `Tarih: <b class="text-blue-700">${data.today_date_str}</b> | Dosya: <b class="text-slate-800">${data.month_folder} / ${data.file_name}</b> | Görüntülenen: <b class="text-blue-700">${displayRecords.length}</b> (Toplam: ${data.records.length})`;
+  }
+
+  const tbody = document.getElementById("serverExcelRowsBody");
+  if (!tbody) return;
+
+  if (displayRecords.length === 0) {
+    if (onlyActiveShift && isToday) {
+      tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">
+        <p class="font-bold text-slate-600">Bu vardiyada (${shiftInfo.shiftName}) henüz yeni bir kayıt girilmedi.</p>
+        <p class="text-[11px] text-slate-400 mt-1">Saat 08:15, 16:15 ve 00:15 vardiya devirlerinden sonra bu ekran otomatik olarak boş başlar.</p>
+        <button type="button" onclick="toggleServerExcelShiftFilter()" class="mt-2.5 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold">Günün tüm kayıtlarını göster (${data.records.length} adet)</button>
+      </td></tr>`;
+    } else {
+      tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">Bu tarihe (${data.today_date_str}) henüz bu dosyaya kayıt girilmedi.</td></tr>`;
+    }
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  tbody.innerHTML = displayRecords.map((r) => `
+    <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+      <td class="p-2.5 text-center font-bold text-slate-500">${r.row}</td>
+      <td class="p-2.5 text-center font-medium text-slate-600 bg-slate-50/50">${r.sheet}</td>
+      <td class="p-2.5 font-bold text-blue-900">${r.area || r.line_and_machine || '-'}</td>
+      <td class="p-2.5 text-slate-700 font-medium">${r.description}</td>
+      <td class="p-2.5 text-center font-bold text-purple-700">${r.criterion_no}</td>
+      <td class="p-2.5 text-center font-bold text-slate-800">${r.time_spent} dk</td>
+      <td class="p-2.5 text-center font-semibold text-slate-700">${r.operator}</td>
+    </tr>
+  `).join("");
 }
 
 // ----------------- SON KAYITLAR LİSTESİ -----------------
@@ -1315,17 +1462,88 @@ function appendChatMessage(sender, message) {
   if (window.lucide) lucide.createIcons();
 }
 
-// ----------------- EXCEL İNDİRME -----------------
+// ----------------- TAB 5: YAPILAN İŞLER & TAKVİME GÖRE EXCEL İNDİRME -----------------
+async function onDoneJobsDateChanged() {
+  const dateInput = document.getElementById("excelFilterDate");
+  if (!dateInput) return;
+  const dateVal = dateInput.value || formatDateToIso(new Date());
+  const machineFilter = document.getElementById("excelFilterMachine")?.value || "";
+
+  const titleEl = document.getElementById("doneJobsTableTitle");
+  const badgeEl = document.getElementById("doneJobsBadgeInfo");
+  const tbody = document.getElementById("doneJobsTableBody");
+
+  if (titleEl) titleEl.innerText = `${dateVal} Tarihinde Yapılan İşler`;
+  if (badgeEl) badgeEl.innerText = "Yükleniyor...";
+
+  try {
+    const res = await fetch(`/api/server-excel/status?date_str=${encodeURIComponent(dateVal)}`);
+    if (!res.ok) throw new Error("Sunucudan veri alınamadı");
+    const data = await res.json();
+
+    let records = data.records || [];
+    if (machineFilter) {
+      records = records.filter(r => (r.area || "").toUpperCase().includes(machineFilter.toUpperCase()));
+    }
+
+    const totalMinutes = records.reduce((sum, r) => sum + (parseInt(r.time_spent) || 0), 0);
+    if (badgeEl) {
+      badgeEl.innerHTML = `Toplam: <b class="text-blue-700 font-bold">${records.length} İşlem</b> | Toplam Süre: <b class="text-emerald-700 font-bold">${totalMinutes} dk</b>`;
+    }
+
+    if (!tbody) return;
+    if (records.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">Bu tarihte (${dateVal}) henüz yapılan bir iş kaydı bulunamadı.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = records.map((r, idx) => `
+      <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+        <td class="p-2.5 text-center font-bold text-slate-500">${idx + 1}</td>
+        <td class="p-2.5 text-center font-medium text-slate-600 bg-slate-50/50">${r.sheet}</td>
+        <td class="p-2.5 font-bold text-blue-900">${r.area || '-'}</td>
+        <td class="p-2.5 text-slate-700 font-medium">${r.description}</td>
+        <td class="p-2.5 text-center font-bold text-purple-700">${r.criterion_no}</td>
+        <td class="p-2.5 text-center font-bold text-slate-800">${r.time_spent} dk</td>
+        <td class="p-2.5 text-center font-semibold text-slate-700">${r.operator}</td>
+      </tr>
+    `).join("");
+  } catch (e) {
+    console.error("Yapılan işler listesi yüklenemedi:", e);
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-rose-500">Kayıtlar yüklenirken hata oluştu.</td></tr>`;
+    }
+  }
+}
+
+function setExportDateQuick(type) {
+  const dateInput = document.getElementById("excelFilterDate");
+  if (!dateInput) return;
+  const d = new Date();
+  if (type === 'yesterday') {
+    d.setDate(d.getDate() - 1);
+  }
+  dateInput.value = formatDateToIso(d);
+  onDoneJobsDateChanged();
+}
+
+function downloadSelectedDateServerExcel() {
+  const dateInput = document.getElementById("excelFilterDate");
+  const dateVal = dateInput?.value || formatDateToIso(new Date());
+  window.open(`/api/server-excel/download?date_str=${encodeURIComponent(dateVal)}`, "_blank");
+}
+
 function downloadTodayExcel() {
-  const today = new Date().toISOString().split("T")[0];
-  window.open(`/api/excel/export?report_date=${today}`, "_blank");
+  const today = formatDateToIso(new Date());
+  window.open(`/api/server-excel/download?date_str=${encodeURIComponent(today)}`, "_blank");
 }
 
 function downloadFilteredExcel() {
-  const date = document.getElementById("excelFilterDate").value;
-  const machine = document.getElementById("excelFilterMachine").value;
-  let url = `/api/excel/export?report_date=${date}`;
-  if (machine) url += `&machine_code=${machine}`;
+  const dateInput = document.getElementById("excelFilterDate");
+  const dateVal = dateInput?.value || formatDateToIso(new Date());
+  const machine = document.getElementById("excelFilterMachine")?.value || "";
+  let url = `/api/excel/export?report_date=${encodeURIComponent(dateVal)}`;
+  if (machine) url += `&machine_code=${encodeURIComponent(machine)}`;
   window.open(url, "_blank");
 }
 

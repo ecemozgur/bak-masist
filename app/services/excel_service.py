@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -311,6 +312,8 @@ class ExcelService:
                         dur = ws.cell(r, 25).value
                         worker = ws.cell(r, 26).value
                         if area or desc:
+                            match = re.search(r"\[(\d{1,2}):(\d{2})\]", str(desc or ""))
+                            time_str = f"{int(match.group(1)):02d}:{int(match.group(2)):02d}" if match else None
                             records.append({
                                 "sheet": sheetname.strip(),
                                 "row": r,
@@ -318,7 +321,8 @@ class ExcelService:
                                 "description": str(desc or "-"),
                                 "criterion_no": str(crit or "-"),
                                 "time_spent": dur or 0,
-                                "operator": str(worker or "-")
+                                "operator": str(worker or "-"),
+                                "time_str": time_str
                             })
                 wb.close()
             except Exception as e:

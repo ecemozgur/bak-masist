@@ -106,7 +106,7 @@
       </button>
       <button onclick="switchTab('excel-export')" id="dtab-excel-export" class="nav-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
         <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
-        <span>Excel Raporları</span>
+        <span>Yapılan İşler & Excel Raporları</span>
       </button>
     </nav>
   </header>
@@ -350,18 +350,24 @@
       <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200 gap-3">
           <div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               <i data-lucide="hard-drive" class="w-4 h-4 text-emerald-600"></i>
               <h3 class="text-base font-bold text-slate-800">Bugün Server'daki Excel'e Kaydedilen İşler</h3>
+              <span id="activeShiftBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">1. Vardiya (08:15 - 16:15)</span>
             </div>
             <p id="serverExcelInfo" class="text-xs text-slate-500 mt-0.5">Yükleniyor...</p>
           </div>
-          <div class="flex items-center space-x-2">
-            <a href="/api/server-excel/download" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Vardiya Filtresi Aç/Kapa Butonu -->
+            <button type="button" id="btnToggleShiftFilter" onclick="toggleServerExcelShiftFilter()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs" title="Vardiya devir saatlerine (08:15, 16:15, 00:15) göre filtrele">
+              <i data-lucide="filter" class="w-3.5 h-3.5 text-blue-600"></i>
+              <span id="shiftFilterBtnText">Sadece Aktif Vardiya</span>
+            </button>
+            <button type="button" onclick="downloadCurrentServerExcel()" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
               <i data-lucide="download" class="w-3.5 h-3.5"></i>
-              <span>Bugünün Excel'ini İndir</span>
-            </a>
-            <button onclick="loadServerExcelStatus()" class="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition" title="Yenile">
+              <span>Excel'i İndir</span>
+            </button>
+            <button type="button" onclick="loadServerExcelStatus()" class="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition" title="Yenile">
               <i data-lucide="rotate-cw" class="w-4 h-4"></i>
             </button>
           </div>
@@ -701,47 +707,99 @@
       </div>
     </section>
 
-    <!-- ----------------- TAB 5: EXCEL RAPORLARI ----------------- -->
+    <!-- ----------------- TAB 5: YAPILAN İŞLER & EXCEL RAPORLARI ----------------- -->
     <section id="tab-excel-export" class="tab-content hidden space-y-6">
       <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
           <div>
-            <h2 class="text-lg font-bold text-slate-900">Günlük Bakım Excel Çıktısı</h2>
-            <p class="text-xs text-slate-500">Mevcut fabrika formatınıza birebir uyumlu `.xlsx` dosyası oluşturun ve indirin.</p>
+            <div class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-bold mb-1.5">
+              <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+              <span>Takvim Bazlı Raporlama</span>
+            </div>
+            <h2 class="text-xl font-bold text-slate-900">Yapılan İşler & Excel İndirme Merkezi</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Takvimden dilediğiniz günü seçerek fabrika resmi server Excel'ini (FR-PE-0657) ve yapılan işler raporunu anında indirin.</p>
           </div>
-          <button onclick="downloadTodayExcel()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition">
-            <i data-lucide="download" class="w-4 h-4"></i>
-            <span>Bugünün Excel Raporunu İndir (.xlsx)</span>
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="downloadSelectedDateServerExcel()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition active:scale-95">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>Resmi Server Excel'ini İndir</span>
+            </button>
+            <button onclick="downloadFilteredExcel()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition active:scale-95">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>Faaliyet Raporu (.xlsx)</span>
+            </button>
+          </div>
         </div>
 
-        <div class="mt-6 space-y-4">
+        <!-- Takvim ve Filtre Alanı -->
+        <div class="mt-5 p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
           <div class="flex flex-wrap items-center gap-3">
             <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Rapor Tarihi</label>
-              <input type="date" id="excelFilterDate" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+              <label class="block text-xs font-semibold text-slate-700 mb-1">📅 Tarih / Takvim Seçimi</label>
+              <input type="date" id="excelFilterDate" onchange="onDoneJobsDateChanged()" class="px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 bg-white">
+            </div>
+            <div class="pt-5 flex items-center gap-2">
+              <button type="button" onclick="setExportDateQuick('today')" class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition">
+                Bugün
+              </button>
+              <button type="button" onclick="setExportDateQuick('yesterday')" class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition">
+                Dün
+              </button>
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Makine Filtresi</label>
-              <select id="excelFilterMachine" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Makine Filtresi (Opsiyonel)</label>
+              <select id="excelFilterMachine" onchange="onDoneJobsDateChanged()" class="px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg bg-white">
                 <option value="">Tüm Makineler</option>
               </select>
             </div>
             <div class="pt-5">
-              <button onclick="downloadFilteredExcel()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
-                <i data-lucide="filter" class="w-3.5 h-3.5"></i> Filtreli İndir
+              <button type="button" onclick="onDoneJobsDateChanged()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span>Listeyi Yenile</span>
               </button>
             </div>
           </div>
+        </div>
 
-          <!-- Excel Şablonu Bilgi Kartı -->
-          <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-2">
-            <p class="font-bold text-slate-800 flex items-center gap-1.5">
-              <i data-lucide="check" class="w-4 h-4 text-emerald-600"></i> Excel Çıktısı Format Garantisi:
-            </p>
-            <p>• Tablo Başlıkları: <i>Sıra, Tarih/Vardiya, Makine No, Arıza Tanımı, Yapılan Müdahale, Değişen Parça, Duruş Süresi (dk), Bakım Türü, Bakımcı Adı, Doruk MES Senkronizasyon Durumu</i>.</p>
-            <p>• Otomatik Excel Formülü: Sayfa altında <code>=SUM(...)</code> fonksiyonu ile toplam duruş dakikası otomatik hesaplanır.</p>
+        <!-- Seçilen Tarihteki Yapılan İşler Canlı Tablosu -->
+        <div class="mt-6 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <i data-lucide="list-checks" class="w-4 h-4 text-blue-600"></i>
+              <span id="doneJobsTableTitle">Seçili Tarihte Yapılan İşler</span>
+            </h3>
+            <span id="doneJobsBadgeInfo" class="text-xs text-slate-500 font-medium">Yükleniyor...</span>
           </div>
+
+          <div class="overflow-x-auto border border-slate-200 rounded-xl">
+            <table class="w-full text-xs text-left border-collapse">
+              <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
+                <tr>
+                  <th class="p-2.5 text-center w-12 border-r border-slate-200">No</th>
+                  <th class="p-2.5 text-center w-28 border-r border-slate-200">Vardiya</th>
+                  <th class="p-2.5 w-36 border-r border-slate-200">Hat No / Makine</th>
+                  <th class="p-2.5 border-r border-slate-200">Yapılan İşlemler</th>
+                  <th class="p-2.5 text-center w-24 border-r border-slate-200">Kriter</th>
+                  <th class="p-2.5 text-center w-20 border-r border-slate-200">Süre</th>
+                  <th class="p-2.5 text-center w-28">İşi Yapan</th>
+                </tr>
+              </thead>
+              <tbody id="doneJobsTableBody" class="divide-y divide-slate-100">
+                <tr>
+                  <td colspan="7" class="p-6 text-center text-slate-400">Yükleniyor...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Excel Şablonu Bilgi Kartı -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-2 mt-4">
+          <p class="font-bold text-slate-800 flex items-center gap-1.5">
+            <i data-lucide="check" class="w-4 h-4 text-emerald-600"></i> İki Format Desteği:
+          </p>
+          <p>• <b>Resmi Server Excel'i:</b> İş yerinizin <code>FR-PE-0657</code> şablonuna birebir uyumlu; 08.00-16.00, 16.00-24.00 ve 24.00-08.00 vardiya sayfalarını içeren orijinal Excel dosyasıdır.</p>
+          <p>• <b>Faaliyet Raporu (.xlsx):</b> Seçilen tarih ve makineye ait toplam duruş sürelerini formülle hesaplayan genel bakım listesidir.</p>
         </div>
       </div>
     </section>
@@ -770,7 +828,7 @@
     </button>
     <button onclick="switchTab('excel-export')" id="mtab-excel-export" class="flex flex-col items-center text-slate-400">
       <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
-      <span class="text-[10px] font-medium mt-0.5">Excel</span>
+      <span class="text-[10px] font-medium mt-0.5">Yapılan İşler</span>
     </button>
   </nav>
 
