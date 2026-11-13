@@ -12,7 +12,8 @@ EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 DATABASE_URL = f"sqlite:///{DATA_DIR / 'bakim_sistemi.db'}"
 
-# Doruk Otomasyon Varsayılan Ayarları (Fabrika sunucu adresine göre güncellenebilir)
+# Doruk Otomasyon Varsayılan Ayarları (Faz 2'de aktif edilecek; varsayılan olarak kapalı)
+DORUK_ENABLED = os.getenv("DORUK_ENABLED", "false").lower() == "true"
 DORUK_API_URL = os.getenv("DORUK_API_URL", "http://doruk-mes.local/api/v1")
 DORUK_API_KEY = os.getenv("DORUK_API_KEY", "doruk_secret_token_123")
 DORUK_AUTO_SYNC_INTERVAL_SEC = 60

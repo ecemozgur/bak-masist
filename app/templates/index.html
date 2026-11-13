@@ -6,7 +6,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Akıllı Fabrika Bakım & Doruk MES Asistanı</title>
+  <title>Akıllı Fabrika Bakım & Arıza Asistanı</title>
   <script>
     // Eski Service Worker ve önbellekleri anında temizle
     if ('serviceWorker' in navigator) {
@@ -61,7 +61,7 @@
         </div>
         <div>
           <h1 class="text-base md:text-lg font-bold tracking-tight leading-none">Bakım & Raporlama</h1>
-          <p class="text-xs text-blue-400 font-medium">Doruk MES & AI Entegre</p>
+          <p class="text-xs text-blue-400 font-medium">Akıllı Bakım & AI Arıza Asistanı</p>
         </div>
       </div>
 
@@ -74,11 +74,13 @@
           <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
         </button>
 
+        {% if doruk_enabled %}
         <!-- Doruk Durum Rozeti -->
         <div class="hidden lg:flex items-center space-x-1.5 bg-blue-950/80 border border-blue-800/60 px-2.5 py-1 rounded-lg text-xs text-blue-300">
           <i data-lucide="radio" class="w-3.5 h-3.5 text-blue-400"></i>
           <span>Doruk MES: <b>Bağlı</b></span>
         </div>
+        {% endif %}
       </div>
     </div>
 
@@ -92,10 +94,12 @@
         <i data-lucide="cpu" class="w-4 h-4"></i>
         <span>Makine Klasörleri</span>
       </button>
+      {% if doruk_enabled %}
       <button onclick="switchTab('doruk-sync')" id="dtab-doruk-sync" class="nav-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
         <span>Doruk Otomasyon</span>
       </button>
+      {% endif %}
       <button onclick="switchTab('chatbot')" id="dtab-chatbot" class="nav-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
         <i data-lucide="bot" class="w-4 h-4"></i>
         <span>Bakımcı Chatbotu</span>
@@ -460,6 +464,7 @@
       </div>
     </section>
 
+    {% if doruk_enabled %}
     <!-- ----------------- TAB 3: DORUK OTOMASYON ENTEGRASYONU ----------------- -->
     <section id="tab-doruk-sync" class="tab-content hidden space-y-6">
       <!-- 1. Üst Bilgi ve İstatistik Paneli -->
@@ -638,6 +643,7 @@
         </div>
       </div>
     </section>
+    {% endif %}
 
     <!-- ----------------- TAB 4: BAKIMCI CHATBOTU (AI ASİSTANI) ----------------- -->
     <section id="tab-chatbot" class="tab-content hidden space-y-4">
@@ -752,10 +758,12 @@
       <i data-lucide="cpu" class="w-5 h-5"></i>
       <span class="text-[10px] font-medium mt-0.5">Makineler</span>
     </button>
+    {% if doruk_enabled %}
     <button onclick="switchTab('doruk-sync')" id="mtab-doruk-sync" class="flex flex-col items-center text-slate-400">
       <i data-lucide="refresh-cw" class="w-5 h-5"></i>
       <span class="text-[10px] font-medium mt-0.5">Doruk</span>
     </button>
+    {% endif %}
     <button onclick="switchTab('chatbot')" id="mtab-chatbot" class="flex flex-col items-center text-slate-400">
       <i data-lucide="bot" class="w-5 h-5"></i>
       <span class="text-[10px] font-medium mt-0.5">Chatbot</span>

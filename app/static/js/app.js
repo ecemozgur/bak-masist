@@ -29,7 +29,9 @@ document.addEventListener("DOMContentLoaded", () => {
   loadMachines();
   loadRecentLogs();
   loadServerExcelStatus();
-  loadDorukSyncLogs();
+  if (document.getElementById("tab-doruk-sync")) {
+    loadDorukSyncLogs();
+  }
   initSpeechRecognition();
   initDescSpeechRecognition();
 
@@ -87,7 +89,9 @@ function initDateAndShift() {
     dorukTechEl.value = currentUser.full_name;
   }
 
-  loadDorukRows(formatDateToIso(now));
+  if (document.getElementById("tab-doruk-sync")) {
+    loadDorukRows(formatDateToIso(now));
+  }
 
   updatePreviewRow();
 }
@@ -491,7 +495,7 @@ async function submitServerExcelLog(event) {
     shift: shift,
     date_str: dateVal,
     include_timestamp: includeTs,
-    sync_to_doruk: true,
+    sync_to_doruk: !!document.getElementById("tab-doruk-sync"),
     user_id: currentUser.id
   };
 
@@ -597,6 +601,7 @@ async function loadRecentLogs() {
           </div>
         </div>
 
+        ${document.getElementById("tab-doruk-sync") ? `
         <div class="flex items-center space-x-2 flex-shrink-0">
           ${l.is_doruk_synced
             ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800" title="Doruk MES Kayıt No: ${l.doruk_record_id || '-'}">
@@ -607,6 +612,7 @@ async function loadRecentLogs() {
                </button>`
           }
         </div>
+        ` : ""}
       </div>
     `).join("");
 
