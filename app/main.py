@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app.config import STATIC_DIR, TEMPLATES_DIR, EXPORTS_DIR, SERVER_EXCEL_BASE_DIR
+from app.config import STATIC_DIR, TEMPLATES_DIR, EXPORTS_DIR, SERVER_EXCEL_BASE_DIR, DORUK_ENABLED
 from app.database import get_db, engine, Base
 from app.models import User, Machine, MaintenanceLog, ChatMessage, DorukSyncLog
 from app.schemas import (
@@ -52,7 +52,7 @@ async def serve_index(request: Request):
     response = templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"criteria_list": CRITERIA_CATALOG}
+        context={"criteria_list": CRITERIA_CATALOG, "doruk_enabled": DORUK_ENABLED}
     )
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -271,8 +271,8 @@ def create_log(data: MaintenanceLogCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(log)
 
-    # Otomatik Doruk Otomasyon Senkronizasyonu
-    if data.sync_to_doruk_immediately:
+    # Otomatik Doruk Otomasyon Senkronizasyonu (yalnızca DORUK_ENABLED=true ise)
+    if DORUK_ENABLED and data.sync_to_doruk_immediately:
         DorukService.push_log_to_doruk(db, log)
 
     return MaintenanceLogResponse(
@@ -384,10 +384,10 @@ def append_to_server_excel(data: ServerExcelAppendRequest, db: Session = Depends
         db.commit()
         db.refresh(log)
 
-        # 3. İstenirse Doruk senkronizasyonu
+        # 3. İstenirse Doruk senkronizasyonu (yalnızca DORUK_ENABLED=true ise)
         doruk_synced = False
         doruk_id = None
-        if data.sync_to_doruk:
+        if DORUK_ENABLED and data.sync_to_doruk:
             push_res = DorukService.push_log_to_doruk(db, log)
             doruk_synced = log.is_doruk_synced
             doruk_id = log.doruk_record_id
@@ -446,12 +446,20 @@ def export_excel(
 
 # ----------------- DORUK OTOMASYON ENTEGRASYONU -----------------
 
+def _ensure_doruk_enabled():
+    if not DORUK_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Doruk MES entegrasyonu şu an devre dışı (Faz 2'de aktif edilecek)."
+        )
+
 @app.post("/api/doruk/append", response_model=DorukAppendResponse)
 def append_to_doruk(data: DorukAppendRequest, db: Session = Depends(get_db)):
     """
     Bakımcının girdiği işi resmi 26 sütunlu Doruk formatında doğrudan kaydeder.
     Son sütunlar: Açıklama (yapılan iş) ve Bilgi Giren (teknisyen).
     """
+    _ensure_doruk_enabled()
     try:
         res = DorukService.append_doruk_row(data, db)
         return res
@@ -462,11 +470,13 @@ def append_to_doruk(data: DorukAppendRequest, db: Session = Depends(get_db)):
 @app.get("/api/doruk/rows", response_model=DorukRowsResponse)
 def get_doruk_rows(date_str: Optional[str] = None, db: Session = Depends(get_db)):
     """Seçilen tarihe ait tüm Doruk satırlarını okur ve listeler."""
+    _ensure_doruk_enabled()
     return DorukService.get_doruk_rows(db, date_str)
 
 @app.get("/api/doruk/export")
 def export_doruk_excel(date_str: Optional[str] = None, db: Session = Depends(get_db)):
     """Seçilen tarihteki Doruk Keypet dosyasını bilgisayara Excel formatında indirir."""
+    _ensure_doruk_enabled()
     target_date = date_str or datetime.now().strftime("%Y-%m-%d")
     file_path = DorukService.export_doruk_file(db, target_date)
     if not file_path or not Path(file_path).exists():
@@ -481,6 +491,7 @@ def export_doruk_excel(date_str: Optional[str] = None, db: Session = Depends(get
 @app.post("/api/doruk/push/{log_id}")
 def push_to_doruk(log_id: int, db: Session = Depends(get_db)):
     """Seçilen arıza kaydını Doruk MES sistemine zorla gönderir."""
+    _ensure_doruk_enabled()
     log = db.query(MaintenanceLog).filter(MaintenanceLog.id == log_id).first()
     if not log:
         raise HTTPException(status_code=404, detail="Kayıt bulunamadı!")
@@ -489,6 +500,7 @@ def push_to_doruk(log_id: int, db: Session = Depends(get_db)):
 @app.post("/api/doruk/pull")
 def pull_from_doruk(data: DorukPullRequest, db: Session = Depends(get_db)):
     """Doruk sistemine makine başında girilen kayıtları uygulamaya çeker."""
+    _ensure_doruk_enabled()
     records = DorukService.pull_logs_from_doruk(db, data.machine_code)
     return {
         "status": "success",
@@ -499,6 +511,7 @@ def pull_from_doruk(data: DorukPullRequest, db: Session = Depends(get_db)):
 @app.get("/api/doruk/sync-logs")
 def get_doruk_sync_logs(db: Session = Depends(get_db)):
     """Son Doruk senkronizasyon hareketlerini listeler."""
+    _ensure_doruk_enabled()
     return db.query(DorukSyncLog).order_by(DorukSyncLog.id.desc()).limit(20).all()
 
 # ----------------- BAKIMCI YAPAY ZEKA CHATBOT -----------------
