@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bakim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bakim_db_pass_degistir}
+      POSTGRES_DB: ${POSTGRES_DB:-bakim_sistemi}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bakim} -d ${POSTGRES_DB:-bakim_sistemi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "8000"
+      DATA_DIR: /data
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bakim}:${POSTGRES_PASSWORD:-bakim_db_pass_degistir}@db:5432/${POSTGRES_DB:-bakim_sistemi}
+    volumes:
+      - ./data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
