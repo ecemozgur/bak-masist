@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Akıllı Fabrika Bakım & Doruk MES Asistanı</title>
+  <script>
+    // Eski Service Worker ve önbellekleri anında temizle
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        for (var r of regs) {
+          r.unregister();
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        for (var name of names) {
+          caches.delete(name);
+        }
+      });
+    }
+  </script>
+  <meta name="theme-color" content="#1e3a8a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 16px rgba(239, 68, 68, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .recording-pulse {
+      animation: pulse-ring 1.5s infinite;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-blue-600 selection:text-white pb-20 md:pb-0">
+
+  <!-- ================= TOP NAVBAR ================= -->
+  <header class="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-inner">
+          <i data-lucide="wrench" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="text-base md:text-lg font-bold tracking-tight leading-none">Bakım & Raporlama</h1>
+          <p class="text-xs text-blue-400 font-medium">Doruk MES & AI Entegre</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <!-- Aktif Kullanıcı Rozeti -->
+        <button onclick="openUserModal()" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 text-sm transition">
+          <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></div>
+          <span id="activeUserName" class="font-medium text-slate-200">Ahmet Yılmaz</span>
+          <span class="text-xs text-slate-400 hidden sm:inline">(Teknisyen)</span>
+          <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
+        </button>
+
+        <!-- Doruk Durum Rozeti -->
+        <div class="hidden lg:flex items-center space-x-1.5 bg-blue-950/80 border border-blue-800/60 px-2.5 py-1 rounded-lg text-xs text-blue-300">
+          <i data-lucide="radio" class="w-3.5 h-3.5 text-blue-400"></i>
+          <span>Doruk MES: <b>Bağlı</b></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Desktop Navigation Tabs -->
+    <nav class="hidden md:flex border-t border-slate-800 px-4 max-w-7xl mx-auto">
+      <button onclick="switchTab('voice-report')" id="dtab-voice-report" class="nav-tab px-4 py-3 text-sm font-medium border-b-2 border-blue-500 text-blue-400 flex items-center space-x-2">
+        <i data-lucide="mic" class="w-4 h-4"></i>
+        <span>Sesli Günlük Rapor</span>
+      </button>
+      <button onclick="switchTab('machines')" id="dtab-machines" class="nav-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+        <i data-lucide="cpu" class="w-4 h-4"></i>
+        <span>Makine Klasörleri</span>
+      </button>
+      <button onclick="switchTab('doruk-sync')" id="dtab-doruk-sync" class="nav-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        <span>Doruk Otomasyon</span>
+      </button>
+      <button onclick="switchTab('chatbot')" id="dtab-chatbot" class="nav-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+        <i data-lucide="bot" class="w-4 h-4"></i>
+        <span>Bakımcı Chatbotu</span>
+      </button>
+      <button onclick="switchTab('excel-export')" id="dtab-excel-export" class="nav-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+        <span>Excel Raporları</span>
+      </button>
+    </nav>
+  </header>
+
+  <!-- ================= MAIN CONTENT CONTAINER ================= -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+
+    <!-- ----------------- TAB 1: SESLİ RAPORLAMA & SERVER EXCEL ----------------- -->
+    <section id="tab-voice-report" class="tab-content space-y-6">
+      
+      <!-- ================= OLUŞAN EXCEL SATIRI ÖNİZLEMESİ & DÜZENLEME ================= -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200 gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-md">FR-PE-0657</span>
+              <h3 class="text-base font-bold text-slate-800">Vardiya Bakım Giriş Formu</h3>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Vardiya bakım girişini doldurun veya açıklamayı mikrofonla sesli yazdırın; formu onaylayıp sunucu Excel dosyasına kaydedin.</p>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <span id="aiConfidenceBadge" class="hidden px-2.5 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+              AI Ayrıştırma: %90
+            </span>
+            <!-- Sesli Oku Butonu -->
+            <button type="button" onclick="speakCurrentRow()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition">
+              <i data-lucide="volume-2" class="w-3.5 h-3.5 text-blue-600"></i>
+              <span>Satırı Sesli Oku</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Düzenleme Formu -->
+        <form id="maintenanceForm" onsubmit="submitServerExcelLog(event)" class="mt-5 space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3.5">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label for="formDateInput" class="block text-xs font-semibold text-slate-700">Tarih *</label>
+                <button type="button" onclick="setTodayDate()" title="Bugünün tarihine dön" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5">
+                  <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Bugün
+                </button>
+              </div>
+              <input type="date" id="formDateInput" onchange="onDateChanged()" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 cursor-pointer">
+              <span id="formDateDayName" class="block text-[11px] text-slate-500 font-medium mt-1"></span>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Vardiya (Sayfa) *</label>
+              <select id="formShift" onchange="updatePreviewRow()" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white">
+                <option value="08.00-16.00">08.00 - 16.00</option>
+                <option value="16.00-24.00">16.00 - 24.00</option>
+                <option value="24.00 - 08.00">24.00 - 08.00</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Bina *</span>
+                <span class="text-[10px] text-blue-600 font-bold">A/B/C</span>
+              </label>
+              <select id="formBuilding" onchange="onBuildingChange()" class="w-full px-3 py-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold bg-blue-50/50 text-blue-900">
+                <option value="HİÇBİRİ">Hiçbiri</option>
+                <option value="A BİNASI">A Binası</option>
+                <option value="B BİNASI">B Binası</option>
+                <option value="C BİNASI">C Binası</option>
+                <option value="BÜTÜN BİNALAR">Bütün Binalar</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Hat Numarası</span>
+                <span class="text-[10px] text-slate-400 font-normal">örn: Hat 1, 1404</span>
+              </label>
+              <input type="text" id="formLineNo" list="lineDatalist" oninput="updatePreviewRow()" placeholder="örn: HAT 1 (AS3001 MONTAJ)" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white">
+              <datalist id="lineDatalist"></datalist>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Makine Kodu</span>
+                <span class="text-[10px] text-slate-400 font-normal">örn: AS1404</span>
+              </label>
+              <input type="text" id="formMachineCode" list="machineCodeDatalist" oninput="onMachineCodeInput()" placeholder="örn: AS3001-1, PT2101, RL1001" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white">
+              <datalist id="machineCodeDatalist"></datalist>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label for="formCriterionSelect" class="block text-xs font-semibold text-slate-700">Kriter (1 - 26 Tablosu) *</label>
+                <button type="button" onclick="openCriteriaModal()" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5">
+                  <i data-lucide="list" class="w-3 h-3"></i> 26'lı Tabloyu Gör
+                </button>
+              </div>
+              <select id="formCriterionSelect" onchange="onCriterionChange()" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white text-slate-800">
+                <option value="1">1 - MAKİNA BAKIM</option>
+                <option value="2">2 - KALIP BAKIM</option>
+                <option value="3">3 - ELEKTRİK ARIZA</option>
+                <option value="4" selected>4 - MEKANİK ARIZA</option>
+                <option value="5">5 - KALIP ARIZA</option>
+                <option value="6">6 - KAİZEN</option>
+                <option value="7">7 - POKOYOKE</option>
+                <option value="8">8 - YRD.TES. KONTROL</option>
+                <option value="9">9 - IK DESTEK</option>
+                <option value="10">10 - MAKER DESTEK</option>
+                <option value="11">11 - ÜRETİM DESTEK</option>
+                <option value="12">12 - PC DESTEK</option>
+                <option value="13">13 - QA DESTEK</option>
+                <option value="14">14 - AYAR</option>
+                <option value="15">15 - EĞİTİM</option>
+                <option value="16">16 - TOPLANTI</option>
+                <option value="17">17 - KYT</option>
+                <option value="18">18 - GENCHI-GENBUTSU-GENİN</option>
+                <option value="19">19 - HAT KURULUMU</option>
+                <option value="20">20 - PROJE HAZIRLIK</option>
+                <option value="21">21 - ÜRÜN TASARIMI</option>
+                <option value="22">22 - TPM</option>
+                <option value="23">23 - KAYIT(RAPORLAMA)</option>
+                <option value="24">24 - KALIP AYAR</option>
+                <option value="25">25 - DIŞ GÖREV</option>
+                <option value="26">26 - QCC</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Harcanan Süre (Dakika) *</label>
+              <input type="number" id="formTimeSpent" oninput="updatePreviewRow()" value="30" min="5" step="5" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-slate-900">
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label for="formOperatorName" class="block text-xs font-semibold text-slate-700">İşi Yapan (Operatör) *</label>
+                <button type="button" onclick="openUserModal()" title="Kullanıcı Seç / Değiştir" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5">
+                  <i data-lucide="user-check" class="w-3 h-3"></i> Seç / Değiştir
+                </button>
+              </div>
+              <input type="text" id="formOperatorName" list="operatorDatalist" oninput="onOperatorNameInput()" required placeholder="İsim soyisim yazın veya seçin" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white shadow-sm">
+              <datalist id="operatorDatalist">
+                <!-- Otomatik doldurulacak -->
+              </datalist>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label for="formJobDescription" class="block text-xs font-semibold text-slate-700">Yapılan İşlemler (Detaylı Açıklama) *</label>
+              <!-- Mikrofon Butonu -->
+              <button type="button" id="btnDescMic" onclick="openVoiceDictationModal()" class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-sm active:scale-95">
+                <svg id="descMicSvg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" x2="12" y1="19" y2="22"></line>
+                </svg>
+                <span id="descMicLabel">Mikrofonla Sesli Yaz</span>
+              </button>
+            </div>
+            <textarea id="formJobDescription" oninput="updatePreviewRow()" rows="3" required placeholder="Makinede ne arıza vardı ve hangi adımlarla giderildi? (Mikrofona basıp doğrudan konuşarak yazdırabilir veya klavyeyle yazabilirsiniz)" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium bg-white"></textarea>
+            
+            <!-- Canlı Ses Durumu ve Hata Bildirim Çubuğu -->
+            <div id="descRecordingStatus" class="hidden mt-1.5 p-2 rounded-lg text-xs flex items-center justify-between bg-rose-50 border border-rose-200 text-rose-700">
+              <span id="descRecordingStatusText" class="font-semibold flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping"></span>
+                <span>🔴 Dinleniyor... Konuşun, buraya yazılıyor.</span>
+              </span>
+              <button type="button" onclick="stopDescRecording()" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold transition">Kaydı Bitir</button>
+            </div>
+          </div>
+
+          <!-- Saat Damgası & Doruk Seçeneği -->
+          <div class="bg-blue-50 border border-blue-200 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center space-x-3">
+              <div class="p-2 bg-blue-600 text-white rounded-lg">
+                <i data-lucide="clock" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <p class="text-xs font-bold text-blue-900">Otomatik Saat Damgası Ekle</p>
+                <p class="text-[11px] text-blue-700">İşlemin başına anlık saat damgası eklenir (örn: [11:30] ...)</p>
+              </div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer self-end sm:self-center">
+              <input type="checkbox" id="includeTimestampCheck" checked onchange="updatePreviewRow()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+
+          <!-- Excel Satır Simülasyonu & Taslak Önizleme (Kaydedilmedi Uyarılı) -->
+          <div class="p-4 bg-amber-50/80 rounded-xl border-2 border-amber-300 shadow-xs">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-1 bg-amber-400 text-amber-950 font-black rounded-lg text-xs flex items-center gap-1.5 shadow-xs">
+                  <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
+                  <span>CANLI TASLAK ÖNİZLEME (Henüz Excel'e Kaydedilmedi)</span>
+                </span>
+              </div>
+              <span class="text-[11px] text-amber-900 font-bold bg-amber-200/70 px-2 py-0.5 rounded">
+                👉 Kaydetmek için aşağıdaki yeşil butona basınız
+              </span>
+            </div>
+            <p class="text-xs text-slate-600 mb-2.5">
+              Bu tablo, siz formda yazdıkça Excel'e <b>nasıl aktarılacağını gösteren anlık bir önizlemedir; dosyanıza henüz işlenmemiştir.</b>
+            </p>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left border-collapse border border-slate-300 bg-white rounded-lg shadow-sm">
+                <thead class="bg-slate-800 text-white font-semibold">
+                  <tr>
+                    <th class="p-2 border border-slate-700 text-center w-28">A - TARİH</th>
+                    <th class="p-2 border border-slate-700 text-center w-24">B - VARDİYA</th>
+                    <th class="p-2 border border-slate-700 w-36">C - HAT NO / MAKİNE</th>
+                    <th class="p-2 border border-slate-700">D..W - YAPILAN İŞLEMLER</th>
+                    <th class="p-2 border border-slate-700 text-center w-28">X - KRİTER</th>
+                    <th class="p-2 border border-slate-700 text-center w-20">Y - SÜRE</th>
+                    <th class="p-2 border border-slate-700 text-center w-28">Z - YAPAN</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="hover:bg-amber-50/50 transition font-medium">
+                    <td id="previewColA" class="p-2 border border-slate-200 text-center text-slate-700 whitespace-nowrap font-bold">13.11.2026</td>
+                    <td id="previewColB" class="p-2 border border-slate-200 text-center text-slate-700 whitespace-nowrap">08.00-16.00</td>
+                    <td id="previewColC" class="p-2 border border-slate-200 text-blue-900 font-bold uppercase">-</td>
+                    <td id="previewColD" class="p-2 border border-slate-200 text-slate-800">-</td>
+                    <td id="previewColX" class="p-2 border border-slate-200 text-center text-purple-700 font-bold">-</td>
+                    <td id="previewColY" class="p-2 border border-slate-200 text-center text-slate-900 font-bold">- dk</td>
+                    <td id="previewColZ" class="p-2 border border-slate-200 text-center text-slate-700 font-semibold">-</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Aksiyon Butonları -->
+          <div class="flex items-center justify-end space-x-3 pt-2">
+            <button type="button" onclick="clearMaintenanceForm()" class="px-4 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition">
+              Temizle
+            </button>
+            <button type="submit" id="btnSubmitServerExcel" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-600/20 flex items-center space-x-2 transition">
+              <i data-lucide="save" class="w-4 h-4"></i>
+              <span>Onayla & Server Excel'ine Kaydet (FR-PE-0657)</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ================= SERVER'DAKİ GÜN EXCEL'İ CANLI DURUMU ================= -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200 gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <i data-lucide="hard-drive" class="w-4 h-4 text-emerald-600"></i>
+              <h3 class="text-base font-bold text-slate-800">Bugün Server'daki Excel'e Kaydedilen İşler</h3>
+            </div>
+            <p id="serverExcelInfo" class="text-xs text-slate-500 mt-0.5">Yükleniyor...</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <a href="/api/server-excel/download" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>Bugünün Excel'ini İndir</span>
+            </a>
+            <button onclick="loadServerExcelStatus()" class="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition" title="Yenile">
+              <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-xs text-left border-collapse border border-slate-200">
+            <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+              <tr>
+                <th class="p-2.5 border border-slate-200 text-center w-12">Satır</th>
+                <th class="p-2.5 border border-slate-200 text-center w-28">Vardiya</th>
+                <th class="p-2.5 border border-slate-200 w-36">Hat No / Makine</th>
+                <th class="p-2.5 border border-slate-200">Yapılan İşlemler</th>
+                <th class="p-2.5 border border-slate-200 text-center w-24">Kriter</th>
+                <th class="p-2.5 border border-slate-200 text-center w-20">Süre</th>
+                <th class="p-2.5 border border-slate-200 text-center w-28">İşi Yapan</th>
+              </tr>
+            </thead>
+            <tbody id="serverExcelRowsBody">
+              <tr>
+                <td colspan="7" class="p-4 text-center text-slate-400">Bugün henüz bu dosyaya kayıt girilmedi.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Son Eklenen Kayıtlar -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+            <i data-lucide="history" class="w-4 h-4 text-blue-600"></i>
+            <span>Bugün Girilen Bakım Kayıtları</span>
+          </h3>
+          <button onclick="loadRecentLogs()" class="text-xs text-blue-600 hover:underline flex items-center gap-1 font-semibold">
+            <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Yenile
+          </button>
+        </div>
+        <div id="recentLogsList" class="divide-y divide-slate-100 max-h-96 overflow-y-auto custom-scrollbar">
+          <!-- Dinamik Yüklenir -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ----------------- TAB 2: MAKİNE KLASÖRLERİ (A, B, C BİNASI LAYOUT KIRILIMI) ----------------- -->
+    <section id="tab-machines" class="tab-content hidden space-y-6">
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <!-- Başlık ve Üst Panel -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-200">
+          <div>
+            <div class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-bold mb-1.5">
+              <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+              <span>Fabrika Yerleşim Planı & Hat - Makine Hiyerarşisi</span>
+            </div>
+            <h2 class="text-xl font-bold text-slate-900">Makine Dijital Klasörleri</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Fabrika PDF yerleşimine göre A Binası (Montaj), B Binası (Plastik) ve C Binası (Metal) hat ve makine kırılımı.</p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Arama Kutusu -->
+            <div class="relative flex-1 sm:w-64">
+              <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+              <input type="text" id="machineSearchInput" onkeyup="filterMachines()" placeholder="Makine kodu, hat veya bina ara..." class="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium">
+            </div>
+            <button onclick="openNewMachineModal()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition active:scale-95">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>Yeni Makine</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bina Filtreleme Butonları (A BİNASI, B BİNASI, C BİNASI, TÜMÜ) -->
+        <div class="flex flex-wrap items-center gap-2 pt-4 pb-2">
+          <button type="button" onclick="setBuildingFilter('ALL')" id="bfilter-ALL" class="bldg-filter-btn px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-900 text-white shadow-sm">
+            <i data-lucide="layout-grid" class="w-4 h-4"></i>
+            <span>Tüm Binalar</span>
+            <span id="badge-count-all" class="px-1.5 py-0.5 bg-slate-800 rounded text-[10px]">136</span>
+          </button>
+          <button type="button" onclick="setBuildingFilter('A BİNASI')" id="bfilter-A" class="bldg-filter-btn px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200">
+            <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+            <span>A BİNASI (Montaj / Assembly)</span>
+            <span id="badge-count-A" class="px-1.5 py-0.5 bg-white rounded text-[10px] text-slate-600 font-semibold border">25</span>
+          </button>
+          <button type="button" onclick="setBuildingFilter('B BİNASI')" id="bfilter-B" class="bldg-filter-btn px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+            <span>B BİNASI (Plastik / Plastics)</span>
+            <span id="badge-count-B" class="px-1.5 py-0.5 bg-white rounded text-[10px] text-slate-600 font-semibold border">52</span>
+          </button>
+          <button type="button" onclick="setBuildingFilter('C BİNASI')" id="bfilter-C" class="bldg-filter-btn px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200">
+            <span class="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
+            <span>C BİNASI (Metal / Pres & Kaynak)</span>
+            <span id="badge-count-C" class="px-1.5 py-0.5 bg-white rounded text-[10px] text-slate-600 font-semibold border">32</span>
+          </button>
+        </div>
+
+        <!-- Makineler Hiyerarşik Kırılım Alanı (Bina -> Hat Numarası -> Makine No) -->
+        <div id="machinesGrid" class="space-y-6 mt-4">
+          <!-- Dinamik Hat ve Makine Grupları Yüklenir -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ----------------- TAB 3: DORUK OTOMASYON ENTEGRASYONU ----------------- -->
+    <section id="tab-doruk-sync" class="tab-content hidden space-y-6">
+      <!-- 1. Üst Bilgi ve İstatistik Paneli -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-200">
+          <div>
+            <div class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-bold mb-1.5">
+              <i data-lucide="radio" class="w-3.5 h-3.5 text-blue-600"></i>
+              <span>Doruk MES & Keypet Resmi Formatı (26 Sütun)</span>
+            </div>
+            <h2 class="text-xl font-bold text-slate-900">Doruk Otomasyon Entegrasyon & Kayıt Merkezi</h2>
+            <p class="text-xs text-slate-500 mt-0.5">
+              Uygulamadan doğrudan Doruk Keypet satırına iş kaydetme, tarih seçerek günün Doruk kayıtlarını bilgisayara indirme ve canlı tablo izleme.
+            </p>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button type="button" onclick="triggerDorukPull()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-sm transition active:scale-95">
+              <i data-lucide="download-cloud" class="w-4 h-4"></i>
+              <span>Doruk'tan Kayıtları Çek</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <p class="text-xs text-slate-500 font-medium">Uygulamadan Doruk'a (Push)</p>
+            <p class="text-xl font-bold text-blue-600 mt-1" id="statDorukPushCount">0</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Keypet satırına yazılan bakım işleri</p>
+          </div>
+          <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <p class="text-xs text-slate-500 font-medium">Seçili Günün Doruk Kayıt Sayısı</p>
+            <p class="text-xl font-bold text-emerald-600 mt-1" id="statDorukDayCount">0</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Keypet dosyasındaki aktif arıza satırları</p>
+          </div>
+          <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <p class="text-xs text-slate-500 font-medium">Keypet Klasör Yolu</p>
+            <p class="text-[11px] font-mono font-semibold text-slate-700 mt-1 truncate" title="C:\Users\ecem.sayar\Desktop\Doruk\97 Doruk Otomasyon Rapor\2026 KEYPET DÖKÜMANLARI">
+              .../2026 KEYPET DÖKÜMANLARI
+            </p>
+            <span class="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-bold">26 Kolonlu Excel / CSV</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Doruk Satırına Doğrudan İş Gönderme Formu -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+          <div class="flex items-center space-x-2">
+            <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900">Doruk Satırına İş Kaydet (26 Kolonlu Format)</h3>
+          </div>
+          <span class="text-xs text-slate-400">Son sütunlara <b>Açıklama (Yapılan İş)</b> ve <b>Bilgi Giren (Teknisyen)</b> yazılır</span>
+        </div>
+
+        <form id="dorukDirectForm" onsubmit="submitDorukDirectRow(event)" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Makine Kodu *</label>
+              <input type="text" id="dorukFormMachineCode" list="machineCodeDatalist" required placeholder="örn: AS2431, AS1405" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Vardiya *</label>
+              <select id="dorukFormShift" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white text-slate-800">
+                <option value="08:00-16:00">08:00 - 16:00 (2. Vardiya)</option>
+                <option value="16:00-24:00">16:00 - 24:00 (3. Vardiya)</option>
+                <option value="24:00-08:00">24:00 - 08:00 (1. Vardiya)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Harcanan Süre (Dakika) *</label>
+              <input type="number" id="dorukFormDuration" value="15" min="1" step="1" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-slate-900">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Arıza / Kriter *</label>
+              <select id="dorukFormCriterion" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white text-slate-800">
+                <option value="4" data-name="MEKANİK ARIZA">4 - MEKANİK ARIZA</option>
+                <option value="3" data-name="ELEKTRİK ARIZA">3 - ELEKTRİK ARIZA</option>
+                <option value="1" data-name="MAKİNA BAKIM">1 - MAKİNA BAKIM</option>
+                <option value="2" data-name="KALIP BAKIM">2 - KALIP BAKIM</option>
+                <option value="5" data-name="KALIP ARIZA">5 - KALIP ARIZA</option>
+                <option value="14" data-name="AYAR">14 - AYAR</option>
+                <option value="22" data-name="TPM">22 - TPM</option>
+                <option value="8" data-name="TANIMSIZ">8 - TANIMSIZ</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">İstasyon / Kalıp Kodu</label>
+              <input type="text" id="dorukFormStation" placeholder="örn: Nut Basma-SPT1032, PFT2001" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Proje Kodu</label>
+              <input type="text" id="dorukFormProject" placeholder="örn: BJ1, 130D, 290B, COMMON, TOGG" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-medium bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Kök Neden / Kusur</label>
+              <input type="text" id="dorukFormRootCause" placeholder="örn: SENSÖR AYARSIZ, KABLO EZİLMİŞ" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium bg-white">
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-semibold text-slate-700">Yapılan İşlem (Açıklama Sütunu) *</label>
+              <button type="button" onclick="openVoiceDictationModalForDoruk()" class="inline-flex items-center space-x-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs">
+                <i data-lucide="mic" class="w-3.5 h-3.5"></i>
+                <span>Sesle Yaz</span>
+              </button>
+            </div>
+            <textarea id="dorukFormDescription" rows="2.5" required placeholder="Doruk formatındaki 25. sütun (Açıklama) için detaylı yapılan müdahale (örn: KABLO KANALLARI EZME YAPIYORDU KANAL GENİŞLETİLDİ VE TEST EDİLDİ)..." class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-medium bg-white"></textarea>
+          </div>
+
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+            <div class="flex items-center space-x-2">
+              <label class="text-xs font-semibold text-slate-700">Bilgi Giren (Teknisyen):</label>
+              <input type="text" id="dorukFormTechnician" required placeholder="İsim Soyisim" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white w-48">
+            </div>
+            <button type="submit" id="btnSubmitDorukDirect" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 shadow-md transition active:scale-95">
+              <i data-lucide="send" class="w-4 h-4"></i>
+              <span>Doruk Satırına Kaydet</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 3. Tarih Seçerek Doruk Satırlarını Bilgisayara İndirme ve Canlı Tablo -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Doruk Keypet Günlük Kayıtları & İndirme</h3>
+            <p id="dorukFileInfoText" class="text-xs text-slate-500 mt-0.5">Seçilen tarihteki Doruk satırlarını görüntüleyin ve bilgisayarınıza Excel olarak indirin.</p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2.5">
+            <!-- Tarih Seçici -->
+            <div class="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <input type="date" id="dorukFilterDate" onchange="onDorukDateChanged()" class="px-2.5 py-1 text-xs border-0 bg-transparent rounded-lg font-bold text-slate-800 focus:ring-0">
+              <button type="button" onclick="setDorukTodayDate()" class="px-2.5 py-1 bg-white hover:bg-slate-200 text-blue-700 rounded-lg text-xs font-bold transition shadow-2xs">
+                Bugün
+              </button>
+            </div>
+
+            <!-- Bilgisayara İndir Butonu -->
+            <button type="button" onclick="downloadDorukExcel()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center space-x-2 shadow-sm transition active:scale-95">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>Doruk Formatında İndir (Excel)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 26 Kolonlu Canlı Doruk Satırları Tablosu -->
+        <div class="mt-4 overflow-x-auto custom-scrollbar border border-slate-200 rounded-xl">
+          <table class="w-full text-xs text-left border-collapse bg-white">
+            <thead class="bg-slate-900 text-white font-semibold whitespace-nowrap">
+              <tr>
+                <th class="p-2.5 text-center border-r border-slate-800">#</th>
+                <th class="p-2.5 border-r border-slate-800">Makine</th>
+                <th class="p-2.5 text-center border-r border-slate-800">Vardiya</th>
+                <th class="p-2.5 text-center border-r border-slate-800">Süre</th>
+                <th class="p-2.5 border-r border-slate-800">İstasyon</th>
+                <th class="p-2.5 border-r border-slate-800">Proje</th>
+                <th class="p-2.5 border-r border-slate-800">Operatör</th>
+                <th class="p-2.5 border-r border-slate-800">Arıza / Kriter</th>
+                <th class="p-2.5 border-r border-slate-800 min-w-[280px]">Açıklama (Yapılan İş)</th>
+                <th class="p-2.5 text-center">Bilgi Giren (Teknisyen)</th>
+              </tr>
+            </thead>
+            <tbody id="dorukRowsTableBody" class="divide-y divide-slate-100 font-medium">
+              <!-- Dinamik Satırlar Yüklenir -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ----------------- TAB 4: BAKIMCI CHATBOTU (AI ASİSTANI) ----------------- -->
+    <section id="tab-chatbot" class="tab-content hidden space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-[75vh]">
+        
+        <!-- Chatbot Header -->
+        <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 rounded-t-2xl">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shadow-sm">
+              <i data-lucide="bot" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h2 class="text-sm font-bold text-slate-900">Bakımcı Arıza & Çözüm Asistanı</h2>
+              <p class="text-[11px] text-slate-500">Makinelerin geçmiş arızalarını ve çözümlerini tarar, rehberlik eder.</p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <select id="chatTargetMachine" class="text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white font-medium">
+              <option value="">Tüm Fabrika / Genel Arama</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Chat Mesajları Alanı -->
+        <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar text-sm">
+          <!-- Başlangıç Hoş Geldin Mesajı -->
+          <div class="flex items-start space-x-2.5 max-w-2xl">
+            <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="bot" class="w-4 h-4"></i>
+            </div>
+            <div class="bg-slate-100 rounded-2xl rounded-tl-none p-3.5 text-slate-800 leading-relaxed shadow-sm">
+              <p class="font-semibold text-slate-900 mb-1">Merhaba! Ben Bakım Asistanı. 🛠️</p>
+              <p class="text-xs text-slate-600 mb-2">
+                Sahada karşılaştığınız herhangi bir arızayı, hata kodunu veya makineyi sorabilirsiniz. Geçmişte bu arızanın nasıl çözüldüğünü ve hangi parçaların değiştiğini hemen bulup size iletirim.
+              </p>
+              <div class="flex flex-wrap gap-1.5 mt-2">
+                <button onclick="askChatbot('Pres 1 hidrolik basınç düştü ne yapmalıyım?')" class="text-[11px] bg-white border border-slate-300 hover:border-purple-400 px-2.5 py-1 rounded-full text-slate-700">"Pres 1 hidrolik basınç düştü?"</button>
+                <button onclick="askChatbot('CNC 01 tezgahında en son hangi parça değişti?')" class="text-[11px] bg-white border border-slate-300 hover:border-purple-400 px-2.5 py-1 rounded-full text-slate-700">"CNC 01 en son ne değişti?"</button>
+                <button onclick="askChatbot('Robot 01 tork hatası nasıl çözüldü?')" class="text-[11px] bg-white border border-slate-300 hover:border-purple-400 px-2.5 py-1 rounded-full text-slate-700">"Robot 01 tork hatası"</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Giriş Alanı -->
+        <div class="p-3 border-t border-slate-200 bg-white rounded-b-2xl">
+          <form onsubmit="handleChatSubmit(event)" class="flex items-center space-x-2">
+            <input type="text" id="chatInput" placeholder="Arızayı veya makineyi sorun (örn: Pres 2'de yağ sızıntısı var)..." class="flex-1 px-4 py-2.5 border border-slate-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+            <button type="submit" class="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-1.5 shadow-md shadow-purple-500/20 transition">
+              <i data-lucide="send" class="w-4 h-4"></i>
+              <span class="hidden sm:inline">Sor</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- ----------------- TAB 5: EXCEL RAPORLARI ----------------- -->
+    <section id="tab-excel-export" class="tab-content hidden space-y-6">
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Günlük Bakım Excel Çıktısı</h2>
+            <p class="text-xs text-slate-500">Mevcut fabrika formatınıza birebir uyumlu `.xlsx` dosyası oluşturun ve indirin.</p>
+          </div>
+          <button onclick="downloadTodayExcel()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>Bugünün Excel Raporunu İndir (.xlsx)</span>
+          </button>
+        </div>
+
+        <div class="mt-6 space-y-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Rapor Tarihi</label>
+              <input type="date" id="excelFilterDate" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Makine Filtresi</label>
+              <select id="excelFilterMachine" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+                <option value="">Tüm Makineler</option>
+              </select>
+            </div>
+            <div class="pt-5">
+              <button onclick="downloadFilteredExcel()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                <i data-lucide="filter" class="w-3.5 h-3.5"></i> Filtreli İndir
+              </button>
+            </div>
+          </div>
+
+          <!-- Excel Şablonu Bilgi Kartı -->
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-2">
+            <p class="font-bold text-slate-800 flex items-center gap-1.5">
+              <i data-lucide="check" class="w-4 h-4 text-emerald-600"></i> Excel Çıktısı Format Garantisi:
+            </p>
+            <p>• Tablo Başlıkları: <i>Sıra, Tarih/Vardiya, Makine No, Arıza Tanımı, Yapılan Müdahale, Değişen Parça, Duruş Süresi (dk), Bakım Türü, Bakımcı Adı, Doruk MES Senkronizasyon Durumu</i>.</p>
+            <p>• Otomatik Excel Formülü: Sayfa altında <code>=SUM(...)</code> fonksiyonu ile toplam duruş dakikası otomatik hesaplanır.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= MOBILE BOTTOM NAVIGATION ================= -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-2 py-2 flex items-center justify-around z-40 shadow-lg">
+    <button onclick="switchTab('voice-report')" id="mtab-voice-report" class="flex flex-col items-center text-blue-600">
+      <i data-lucide="mic" class="w-5 h-5"></i>
+      <span class="text-[10px] font-semibold mt-0.5">Sesli Rapor</span>
+    </button>
+    <button onclick="switchTab('machines')" id="mtab-machines" class="flex flex-col items-center text-slate-400">
+      <i data-lucide="cpu" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium mt-0.5">Makineler</span>
+    </button>
+    <button onclick="switchTab('doruk-sync')" id="mtab-doruk-sync" class="flex flex-col items-center text-slate-400">
+      <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium mt-0.5">Doruk</span>
+    </button>
+    <button onclick="switchTab('chatbot')" id="mtab-chatbot" class="flex flex-col items-center text-slate-400">
+      <i data-lucide="bot" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium mt-0.5">Chatbot</span>
+    </button>
+    <button onclick="switchTab('excel-export')" id="mtab-excel-export" class="flex flex-col items-center text-slate-400">
+      <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium mt-0.5">Excel</span>
+    </button>
+  </nav>
+
+  <!-- ================= SESLİ DİKTE MODALI (MİKROFON PENCERESİ) ================= -->
+  <div id="voiceDictationModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+      <!-- Modal Header -->
+      <div class="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-sm">
+            <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" x2="12" y1="19" y2="22"></line>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold leading-tight">Sesli Açıklama Dikte Et</h3>
+            <p class="text-xs text-blue-300">Konuşun, söyledikleriniz anında metne dökülsün</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeVoiceDictationModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 space-y-4">
+        <!-- Büyük Mikrofon Butonu -->
+        <div class="flex flex-col items-center justify-center py-2">
+          <button type="button" id="modalMicBtn" onclick="toggleModalDictation()" class="w-20 h-20 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-xl transition-all active:scale-95 focus:outline-none">
+            <svg id="modalMicIcon" class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" x2="12" y1="19" y2="22"></line>
+            </svg>
+          </button>
+          <p id="modalMicStatus" class="mt-3 text-sm font-bold text-slate-700">Mikrofona Basarak Konuşmaya Başlayın</p>
+          <p id="modalMicSubStatus" class="text-xs text-slate-400 mt-0.5">Konuşmanız bitince durdurmak için mikrofona tekrar basın</p>
+        </div>
+
+        <!-- Hata / Bilgilendirme Kutusu (varsa görünür) -->
+        <div id="modalMicAlert" class="hidden p-3 rounded-xl text-xs bg-rose-50 border border-rose-200 text-rose-700 font-medium leading-relaxed"></div>
+
+        <!-- Canlı Konuşulan Metin Alanı -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Dikte Edilen Metin (Düzenlenebilir):</label>
+          <textarea id="modalDictationOutput" rows="4" placeholder="Konuştuklarınız burada belirecektir... İsterseniz elle de düzeltebilirsiniz." class="w-full p-3 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-semibold bg-slate-50 uppercase"></textarea>
+        </div>
+
+        <!-- Hızlı Eklenebilir Saha Cümleleri -->
+        <div class="pt-1">
+          <p class="text-[11px] font-semibold text-slate-500 mb-1.5">Tek Tıkla Eklenebilir Kalıp İşlemler:</p>
+          <div class="flex flex-wrap gap-1.5 text-xs">
+            <button type="button" onclick="appendToModalText('PERİYODİK BAKIM YAPILDI VE YAĞLAMA TAMAMLANDI.')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 font-medium">+ Bakım & Yağlama</button>
+            <button type="button" onclick="appendToModalText('HAVA HORTUMU PATLAMIŞTI YENİ HORTUM TAKILDI.')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 font-medium">+ Hortum Değişimi</button>
+            <button type="button" onclick="appendToModalText('SENSÖR ARIZASI GİDERİLDİ VE TEST EDİLDİ.')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 font-medium">+ Sensör Arızası</button>
+            <button type="button" onclick="appendToModalText('TEMİZLİK VE 5S ÇALIŞMASI YAPILDI.')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 font-medium">+ 5S & Temizlik</button>
+            <button type="button" onclick="appendToModalText('PANO İÇİ SİGORTA KONTROL EDİLDİ VE DEĞİŞTİRİLDİ.')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 font-medium">+ Pano & Sigorta</button>
+            <button type="button" onclick="appendToModalText('PNÖMATİK VALF DEĞİŞİMİ YAPILDI.')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 font-medium">+ Valf Değişimi</button>
+            <button type="button" onclick="appendToModalText('KALIP İTİCİ PİM TEMİZLENDİ VE DANDORİ TAMAMLANDI.')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 font-medium">+ Dandori & Kalıp</button>
+          </div>
+        </div>
+
+        <!-- Windows Dahili Sesli Yazma Kısayolu -->
+        <div class="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-xs text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div class="flex items-start sm:items-center gap-2">
+            <span class="text-xl">🎙️</span>
+            <div>
+              <p class="font-bold text-blue-900">Windows Dahili Sesle Yazma (En Güvenilir Yol):</p>
+              <p class="text-[11px] text-blue-700 mt-0.5">Klavyenizden <kbd class="px-1.5 py-0.5 bg-white border border-blue-300 rounded font-bold shadow-xs">Windows Tuşu</kbd> + <kbd class="px-1.5 py-0.5 bg-white border border-blue-300 rounded font-bold shadow-xs">H</kbd> tuşlarına basarak doğrudan Türkçe sesle yazdırabilirsiniz.</p>
+            </div>
+          </div>
+          <button type="button" onclick="activateWindowsDictation()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shrink-0 shadow-xs flex items-center justify-center gap-1 transition">
+            <span>Kutuyu Seç & Başlat</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+        <button type="button" onclick="closeVoiceDictationModal()" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition">
+          İptal
+        </button>
+        <button type="button" onclick="applyModalDictationToForm()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition active:scale-95">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Açıklamaya Aktar ve Kapat</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 26 KRİTER REFERANS TABLOSU MODALI ================= -->
+  <div id="criteriaModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in duration-200">
+      <!-- Modal Header -->
+      <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-sm">
+            <i data-lucide="list-ordered" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold leading-tight">FR-PE-0657 Kriter Kataloğu (1 - 26)</h3>
+            <p class="text-xs text-blue-300">İstediğiniz kritere tıklayarak formunuza seçebilirsiniz</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeCriteriaModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Grid 1-26) -->
+      <div class="p-4 overflow-y-auto custom-scrollbar flex-1 bg-slate-50">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <button type="button" onclick="selectCriterionFromModal('1')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">1</span><span class="font-bold text-slate-800">MAKİNA BAKIM</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('2')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">2</span><span class="font-bold text-slate-800">KALIP BAKIM</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('3')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">3</span><span class="font-bold text-slate-800">ELEKTRİK ARIZA</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('4')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">4</span><span class="font-bold text-slate-800">MEKANİK ARIZA</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('5')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">5</span><span class="font-bold text-slate-800">KALIP ARIZA</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('6')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">6</span><span class="font-bold text-slate-800">KAİZEN</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('7')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">7</span><span class="font-bold text-slate-800">POKOYOKE</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('8')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">8</span><span class="font-bold text-slate-800">YRD.TES. KONTROL</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('9')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">9</span><span class="font-bold text-slate-800">IK DESTEK</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('10')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">10</span><span class="font-bold text-slate-800">MAKER DESTEK</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('11')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">11</span><span class="font-bold text-slate-800">ÜRETİM DESTEK</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('12')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">12</span><span class="font-bold text-slate-800">PC DESTEK</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('13')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">13</span><span class="font-bold text-slate-800">QA DESTEK</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('14')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">14</span><span class="font-bold text-slate-800">AYAR</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('15')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">15</span><span class="font-bold text-slate-800">EĞİTİM</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('16')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">16</span><span class="font-bold text-slate-800">TOPLANTI</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('17')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">17</span><span class="font-bold text-slate-800">KYT</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('18')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">18</span><span class="font-bold text-slate-800">GENCHI-GENBUTSU-GENİN</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('19')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">19</span><span class="font-bold text-slate-800">HAT KURULUMU</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('20')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">20</span><span class="font-bold text-slate-800">PROJE HAZIRLIK</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('21')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">21</span><span class="font-bold text-slate-800">ÜRÜN TASARIMI</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('22')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">22</span><span class="font-bold text-slate-800">TPM</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('23')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">23</span><span class="font-bold text-slate-800">KAYIT(RAPORLAMA)</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('24')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">24</span><span class="font-bold text-slate-800">KALIP AYAR</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('25')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">25</span><span class="font-bold text-slate-800">DIŞ GÖREV</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+          <button type="button" onclick="selectCriterionFromModal('26')" class="p-2.5 bg-white rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50/70 flex items-center justify-between text-left transition group shadow-sm">
+            <div class="flex items-center gap-2"><span class="w-6 h-6 rounded bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs">26</span><span class="font-bold text-slate-800">QCC</span></div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-600"></i>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Modal Footer -->
+      <div class="p-3 bg-white border-t border-slate-200 text-right">
+        <button type="button" onclick="closeCriteriaModal()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MAKİNE KLASÖR DETAY MODALI ================= -->
+  <div id="machineFolderModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold">
+            <i data-lucide="folder" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 id="modalMachineCode" class="text-lg font-bold leading-tight">PRES-01</h3>
+            <p id="modalMachineName" class="text-xs text-blue-300">160 Ton Hidrolik Pres</p>
+          </div>
+        </div>
+        <button onclick="closeMachineFolderModal()" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-5 overflow-y-auto space-y-4 custom-scrollbar flex-1">
+        <!-- Makine İstatistikleri -->
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center">
+            <p class="text-[11px] text-slate-500 font-medium">Toplam Duruş</p>
+            <p id="modalTotalDowntime" class="text-base font-bold text-rose-600 mt-0.5">0 dk</p>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center">
+            <p class="text-[11px] text-slate-500 font-medium">Müdahale Sayısı</p>
+            <p id="modalInterventionCount" class="text-base font-bold text-blue-600 mt-0.5">0</p>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center">
+            <p class="text-[11px] text-slate-500 font-medium">Çalışma Durumu</p>
+            <span id="modalMachineStatusBadge" class="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-bold mt-1">CALISIYOR</span>
+          </div>
+        </div>
+
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 pt-2">Makine Arıza & Bakım Geçmişi</h4>
+        <div id="modalMachineHistoryList" class="space-y-2">
+          <!-- Dinamik Geçmiş Kayıtlar -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= KULLANICI GİRİŞİ / DEĞİŞTİRME MODALI ================= -->
+  <div id="userModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-in fade-in duration-200">
+      <div class="flex items-center justify-between mb-4">
+        <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+          <i data-lucide="user-check" class="w-5 h-5"></i>
+        </div>
+        <button type="button" onclick="closeUserModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="text-left mb-4">
+        <h3 class="text-base font-bold text-slate-900">Bakımcı / Operatör Seçimi</h3>
+        <p class="text-xs text-slate-500">İşi yapan personeli seçin (formda otomatik görünecektir)</p>
+      </div>
+
+      <div class="space-y-3">
+        <label class="block text-xs font-semibold text-slate-600">Teknisyen / Personel</label>
+        <select id="userSelectDropdown" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800">
+          <!-- Dinamik Kullanıcılar -->
+        </select>
+        <div class="flex gap-2 pt-2">
+          <button type="button" onclick="closeUserModal()" class="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">
+            Vazgeç
+          </button>
+          <button type="button" onclick="confirmUserSelection()" class="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition active:scale-95">
+            Seç ve Uygula
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js?v=20261113_0835"></script>
+</body>
+</html>
