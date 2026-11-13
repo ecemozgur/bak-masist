@@ -1,18 +1,22 @@
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.config import STATIC_DIR, TEMPLATES_DIR, EXPORTS_DIR, SERVER_EXCEL_BASE_DIR, DORUK_ENABLED
+from app.config import (
+    STATIC_DIR, TEMPLATES_DIR, EXPORTS_DIR, SERVER_EXCEL_BASE_DIR,
+    DORUK_ENABLED, SESSION_COOKIE_NAME, SESSION_TTL_DAYS
+)
 from app.database import get_db, engine, Base
 from app.models import User, Machine, MaintenanceLog, ChatMessage, DorukSyncLog
 from app.schemas import (
-    UserLogin, UserResponse, MachineResponse, MachineCreate,
+    UserLogin, UserCreate, UserUpdate, UserResponse, MachineResponse, MachineCreate,
     MaintenanceLogCreate, MaintenanceLogResponse,
     VoiceParseRequest, VoiceParseResponse,
     ChatQueryRequest, ChatQueryResponse, DorukPullRequest,
@@ -24,6 +28,11 @@ from app.services.voice_service import VoiceService
 from app.services.excel_service import ExcelService, CRITERIA_CATALOG
 from app.services.doruk_service import DorukService
 from app.services.chatbot_service import ChatbotService
+from app.services.auth_service import (
+    hash_pin, verify_pin, is_pin_hashed, validate_password_strength, create_session_token,
+    check_rate_limit, record_failed_attempt, clear_failed_attempts,
+    get_current_user, require_admin, is_admin_role
+)
 
 # Veritabanı tablolarını ve ilk verileri hazırla
 init_database()
@@ -70,32 +79,138 @@ async def serve_sw():
 # ----------------- KULLANICI / AUTH API -----------------
 
 @app.post("/api/auth/login", response_model=UserResponse)
-def login(creds: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == creds.username).first()
-    if not user:
-        # Pratik kullanım: kullanıcı yoksa otomatik oluştur
-        user = User(
-            username=creds.username,
-            full_name=creds.username.title(),
-            role="TEKNISYEN",
-            department="Bakım Onarım",
-            pin_code=creds.pin_code or "1234"
-        )
-        db.add(user)
+def login(creds: UserLogin, request: Request, response: Response, db: Session = Depends(get_db)):
+    sicil_no = creds.username.strip()
+    if not sicil_no or not creds.pin_code:
+        raise HTTPException(status_code=400, detail="Sicil numarası ve PIN kodu zorunludur.")
+
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit(client_ip, sicil_no)
+
+    user = db.query(User).filter(func.lower(User.username) == sicil_no.lower()).first()
+    if not user or not user.is_active or not verify_pin(creds.pin_code, user.pin_code):
+        record_failed_attempt(client_ip, sicil_no)
+        raise HTTPException(status_code=401, detail="Sicil numarası veya PIN kodu hatalı!")
+
+    clear_failed_attempts(client_ip, sicil_no)
+
+    # Eski düz metin PIN varsa girişte hash'e yükselt
+    if not is_pin_hashed(user.pin_code):
+        user.pin_code = hash_pin(creds.pin_code)
         db.commit()
         db.refresh(user)
-    elif creds.pin_code and user.pin_code and creds.pin_code != user.pin_code:
-        raise HTTPException(status_code=401, detail="Hatalı PIN Kodu!")
+
+    ttl_days = SESSION_TTL_DAYS if creds.remember_me else 1
+    token = create_session_token(user.id, user.role, ttl_days=ttl_days)
+    is_https = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto", "").lower() == "https"
+    )
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=is_https,
+        max_age=ttl_days * 86400 if creds.remember_me else None,
+        path="/",
+    )
     return user
 
+@app.post("/api/auth/logout")
+def logout(response: Response):
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    return {"status": "ok"}
+
+@app.get("/api/auth/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
 @app.get("/api/auth/users", response_model=List[UserResponse])
-def get_users(db: Session = Depends(get_db)):
-    return db.query(User).filter(User.is_active == True).all()
+def get_users(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if is_admin_role(current_user.role):
+        return db.query(User).order_by(User.id.asc()).all()
+    return db.query(User).filter(User.is_active == True).order_by(User.id.asc()).all()
+
+# ----------------- ADMIN KULLANICI YÖNETİMİ -----------------
+
+@app.post("/api/admin/users", response_model=UserResponse)
+def admin_create_user(
+    data: UserCreate,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    sicil_no = data.username.strip()
+    if not sicil_no or not data.full_name.strip() or not data.pin_code.strip():
+        raise HTTPException(status_code=400, detail="Sicil no, ad soyad ve şifre zorunludur.")
+
+    validate_password_strength(data.pin_code.strip())
+
+    existing = db.query(User).filter(func.lower(User.username) == sicil_no.lower()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu sicil numarası zaten kayıtlı!")
+
+    role = data.role.upper().strip()
+    if role not in ("TEKNISYEN", "ADMIN"):
+        role = "TEKNISYEN"
+
+    user = User(
+        username=sicil_no,
+        full_name=data.full_name.strip(),
+        role=role,
+        department=data.department.strip() or "Mekanik Bakım",
+        pin_code=hash_pin(data.pin_code.strip()),
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.patch("/api/admin/users/{user_id}", response_model=UserResponse)
+def admin_update_user(
+    user_id: int,
+    data: UserUpdate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı!")
+
+    if data.full_name is not None:
+        user.full_name = data.full_name.strip()
+    if data.department is not None:
+        user.department = data.department.strip()
+    if data.role is not None:
+        new_role = data.role.upper().strip()
+        if new_role in ("TEKNISYEN", "ADMIN"):
+            if user.id == admin.id and new_role != "ADMIN":
+                raise HTTPException(status_code=400, detail="Kendi yönetici yetkinizi kaldıramazsınız.")
+            user.role = new_role
+    if data.is_active is not None:
+        if user.id == admin.id and not data.is_active:
+            raise HTTPException(status_code=400, detail="Kendi hesabınızı pasife alamazsınız.")
+        user.is_active = data.is_active
+    if data.pin_code is not None and data.pin_code.strip():
+        clean_pw = data.pin_code.strip()
+        validate_password_strength(clean_pw)
+        user.pin_code = hash_pin(clean_pw)
+
+    db.commit()
+    db.refresh(user)
+    return user
 
 # ----------------- MAKİNE YÖNETİMİ & DİJİTAL KLASÖRLER -----------------
 
 @app.get("/api/machines", response_model=List[MachineResponse])
-def get_machines(db: Session = Depends(get_db)):
+def get_machines(
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     machines = db.query(Machine).all()
     result = []
     for m in machines:
@@ -117,7 +232,11 @@ def get_machines(db: Session = Depends(get_db)):
     return result
 
 @app.post("/api/machines", response_model=MachineResponse)
-def create_machine(data: MachineCreate, db: Session = Depends(get_db)):
+def create_machine(
+    data: MachineCreate,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     existing = db.query(Machine).filter(Machine.code == data.code.upper()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Bu makine kodu zaten kayıtlı!")
@@ -136,7 +255,11 @@ def create_machine(data: MachineCreate, db: Session = Depends(get_db)):
     return machine
 
 @app.get("/api/machines/{machine_code}/folder")
-def get_machine_folder(machine_code: str, db: Session = Depends(get_db)):
+def get_machine_folder(
+    machine_code: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Belirli bir makinenin dijital klasörü:
     Künyesi, geçmiş arızaları, değişen parçalar, duruş istatistikleri ve Doruk kayıtları.
@@ -184,7 +307,11 @@ def get_machine_folder(machine_code: str, db: Session = Depends(get_db)):
 # ----------------- SESLİ RAPOR AYRIŞTIRMA (STT & NLP) -----------------
 
 @app.post("/api/voice/parse", response_model=VoiceParseResponse)
-def parse_voice(data: VoiceParseRequest, db: Session = Depends(get_db)):
+def parse_voice(
+    data: VoiceParseRequest,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Mikrofondan gelen konuşma dökümünü analiz edip form alanlarını doldurur.
     """
@@ -198,6 +325,7 @@ def get_logs(
     machine_code: Optional[str] = None,
     date_str: Optional[str] = None,
     limit: int = 50,
+    _user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(MaintenanceLog)
@@ -231,7 +359,11 @@ def get_logs(
     return results
 
 @app.post("/api/logs", response_model=MaintenanceLogResponse)
-def create_log(data: MaintenanceLogCreate, db: Session = Depends(get_db)):
+def create_log(
+    data: MaintenanceLogCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Bakımcının sesle doldurup okuyup onayladığı kaydı veritabanına ekler.
     İstenirse anında Doruk MES sistemine otomatik iletir.
@@ -251,7 +383,7 @@ def create_log(data: MaintenanceLogCreate, db: Session = Depends(get_db)):
 
     log = MaintenanceLog(
         machine_id=machine.id,
-        user_id=data.user_id,
+        user_id=current_user.id,
         date_str=data.date_str or datetime.now().strftime("%Y-%m-%d"),
         shift=data.shift or "1. Vardiya (08:00 - 16:00)",
         failure_description=data.failure_description,
@@ -298,12 +430,15 @@ def create_log(data: MaintenanceLogCreate, db: Session = Depends(get_db)):
 # ----------------- EXCEL ÇIKTISI & SUNUCU EXCEL İŞLEMLERİ -----------------
 
 @app.get("/api/criteria")
-def get_criteria_list():
+def get_criteria_list(_user: User = Depends(get_current_user)):
     """FR-PE-0657 Kriter kataloğunu (1-26, 5S) döner."""
     return CRITERIA_CATALOG
 
 @app.get("/api/server-excel/status", response_model=ServerExcelStatusResponse)
-def get_server_excel_status(date_str: Optional[str] = None):
+def get_server_excel_status(
+    date_str: Optional[str] = None,
+    _user: User = Depends(get_current_user)
+):
     """İş yeri sunucusundaki seçili veya bugünkü Excel dosyasının durumunu ve satırlarını döner."""
     dt = None
     if date_str:
@@ -318,7 +453,11 @@ def get_server_excel_status(date_str: Optional[str] = None):
     return ServerExcelStatusResponse(**status)
 
 @app.post("/api/server-excel/append", response_model=ServerExcelAppendResponse)
-def append_to_server_excel(data: ServerExcelAppendRequest, db: Session = Depends(get_db)):
+def append_to_server_excel(
+    data: ServerExcelAppendRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Operatörün sesle doldurup okuyup onayladığı satırı iş yeri sunucusundaki gün Excel'ine kaydeder.
     Aynı zamanda yerel veri tabanına ve istenirse Doruk MES'e de işler.
@@ -368,7 +507,7 @@ def append_to_server_excel(data: ServerExcelAppendRequest, db: Session = Depends
 
         log = MaintenanceLog(
             machine_id=machine.id,
-            user_id=data.user_id,
+            user_id=current_user.id,
             date_str=entry_dt.strftime("%Y-%m-%d"),
             shift=data.shift or "08.00-16.00",
             failure_description=data.job_description,
@@ -407,7 +546,10 @@ def append_to_server_excel(data: ServerExcelAppendRequest, db: Session = Depends
         raise HTTPException(status_code=500, detail=f"Excel'e kayıt sırasında hata oluştu: {str(e)}")
 
 @app.get("/api/server-excel/download")
-def download_today_server_excel(date_str: Optional[str] = None):
+def download_today_server_excel(
+    date_str: Optional[str] = None,
+    _user: User = Depends(get_current_user)
+):
     """İş yeri sunucusundaki seçili veya bugünün güncel Excel dosyasını indirir."""
     dt = None
     if date_str:
@@ -433,6 +575,7 @@ def download_today_server_excel(date_str: Optional[str] = None):
 def export_excel(
     report_date: Optional[str] = None,
     machine_code: Optional[str] = None,
+    _user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(MaintenanceLog)
@@ -523,7 +666,11 @@ def get_doruk_sync_logs(db: Session = Depends(get_db)):
 # ----------------- BAKIMCI YAPAY ZEKA CHATBOT -----------------
 
 @app.post("/api/chat", response_model=ChatQueryResponse)
-def chat_with_bot(data: ChatQueryRequest, db: Session = Depends(get_db)):
+def chat_with_bot(
+    data: ChatQueryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Bakım teknisyeninin arıza sorularına geçmiş makine verilerini tarayarak yanıt üretir.
     """
@@ -531,7 +678,7 @@ def chat_with_bot(data: ChatQueryRequest, db: Session = Depends(get_db)):
         db=db,
         query=data.query,
         machine_code=data.machine_code,
-        user_id=data.user_id
+        user_id=current_user.id
     )
     return ChatQueryResponse(
         answer=res["answer"],

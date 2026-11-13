@@ -18,6 +18,11 @@ DORUK_API_URL = os.getenv("DORUK_API_URL", "http://doruk-mes.local/api/v1")
 DORUK_API_KEY = os.getenv("DORUK_API_KEY", "doruk_secret_token_123")
 DORUK_AUTO_SYNC_INTERVAL_SEC = 60
 
+# Oturum & Kimlik Doğrulama Ayarları
+AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY", "bakim-asistani-dev-secret-change-in-prod")
+SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "30"))
+SESSION_COOKIE_NAME = "bakim_session"
+
 # Fabrika Sunucusundaki Günlük Vardiya Excel Klasörü (FR-PE-0657)
 SERVER_EXCEL_BASE_DIR = Path(os.getenv(
     "SERVER_EXCEL_BASE_DIR",

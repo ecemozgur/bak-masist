@@ -1,11 +1,7 @@
 // ================= AKILLI BAKIM & DORUK MES UYGULAMASI =================
 
-let currentUser = {
-  id: 1,
-  username: "zafer",
-  full_name: "ZAFER",
-  role: "TEKNISYEN"
-};
+let currentUser = null;
+let appInitialized = false;
 
 let allMachines = [];
 let criteriaList = [];
@@ -15,25 +11,12 @@ let recordedTranscript = "";
 
 // Sayfa Yüklendiğinde
 document.addEventListener("DOMContentLoaded", () => {
-  // Lucide ikonlarını başlat
   if (window.lucide) {
     lucide.createIcons();
   }
 
-  // Tarih ve Vardiya Başlatma
-  initDateAndShift();
-
-  // Verileri çek
-  loadCriteria();
-  loadUsers();
-  loadMachines();
-  loadRecentLogs();
-  loadServerExcelStatus();
-  if (document.getElementById("tab-doruk-sync")) {
-    loadDorukSyncLogs();
-  }
-  initSpeechRecognition();
-  initDescSpeechRecognition();
+  // Oturum kontrolü yap; giriş yapılmışsa uygulamayı başlat
+  checkAuthAndInit();
 
   // Service Worker Temizleme (Önbellek sorunlarını önlemek için)
   if ('serviceWorker' in navigator) {
@@ -44,6 +27,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+function startAppAfterAuth() {
+  if (!appInitialized) {
+    appInitialized = true;
+    initDateAndShift();
+    initSpeechRecognition();
+    initDescSpeechRecognition();
+  }
+  loadCriteria();
+  loadUsers();
+  loadMachines();
+  loadRecentLogs();
+  loadServerExcelStatus();
+  if (document.getElementById("tab-doruk-sync")) {
+    loadDorukSyncLogs();
+  }
+}
 
 // ----------------- TARİH & VARDİYA AYARLARI -----------------
 const TURKISH_DAYS_ARRAY = ["PAZAR", "PAZARTESİ", "SALI", "ÇARŞAMBA", "PERŞEMBE", "CUMA", "CUMARTESİ"];
@@ -74,7 +74,7 @@ function initDateAndShift() {
   }
 
   const opNameInput = document.getElementById("formOperatorName");
-  if (opNameInput && !opNameInput.value) {
+  if (opNameInput && !opNameInput.value && currentUser) {
     opNameInput.value = currentUser.full_name;
   }
 
@@ -91,7 +91,7 @@ function initDateAndShift() {
   }
 
   const dorukTechEl = document.getElementById("dorukFormTechnician");
-  if (dorukTechEl && !dorukTechEl.value) {
+  if (dorukTechEl && !dorukTechEl.value && currentUser) {
     dorukTechEl.value = currentUser.full_name;
   }
 
@@ -506,7 +506,7 @@ async function submitServerExcelLog(event) {
     date_str: dateVal,
     include_timestamp: includeTs,
     sync_to_doruk: !!document.getElementById("tab-doruk-sync"),
-    user_id: currentUser.id
+    user_id: currentUser ? currentUser.id : null
   };
 
   try {
@@ -1414,7 +1414,7 @@ async function askChatbot(query, machineCode = null) {
       body: JSON.stringify({
         query: query,
         machine_code: machineCode,
-        user_id: currentUser.id
+        user_id: currentUser ? currentUser.id : null
       })
     });
     const data = await res.json();
@@ -1443,7 +1443,7 @@ function appendChatMessage(sender, message) {
         ${formattedMsg}
       </div>
       <div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-        ${currentUser.full_name[0]}
+        ${currentUser && currentUser.full_name ? currentUser.full_name[0] : "U"}
       </div>
     </div>
   ` : `
@@ -1547,115 +1547,329 @@ function downloadFilteredExcel() {
   window.open(url, "_blank");
 }
 
-// ----------------- OPERATÖR & KULLANICI YÖNETİMİ -----------------
+// ----------------- KİMLİK DOĞRULAMA & ADMIN YÖNETİMİ -----------------
 let allUsers = [];
+
+function isAdminUser(user) {
+  return user && ["ADMIN", "AMIR", "YONETICI"].includes((user.role || "").toUpperCase());
+}
+
+function setInputError(el, hasError) {
+  if (!el) return;
+  const errClasses = ["border-rose-500", "ring-2", "ring-rose-200", "bg-rose-50"];
+  if (hasError) {
+    el.classList.remove("border-slate-300", "bg-white");
+    el.classList.add(...errClasses);
+  } else {
+    el.classList.remove(...errClasses);
+    el.classList.add("border-slate-300", "bg-white");
+  }
+}
+
+function clearInputError(el) {
+  setInputError(el, false);
+}
+
+function showLoginOverlay(errorMsg = "") {
+  const overlay = document.getElementById("loginOverlay");
+  const errEl = document.getElementById("loginError");
+  const sicilInput = document.getElementById("loginSicilNo");
+  const pinInput = document.getElementById("loginPin");
+
+  if (overlay) overlay.classList.remove("hidden");
+  if (errEl) {
+    if (errorMsg) {
+      errEl.textContent = errorMsg;
+      errEl.classList.remove("hidden");
+      setInputError(sicilInput, true);
+      setInputError(pinInput, true);
+    } else {
+      errEl.classList.add("hidden");
+      setInputError(sicilInput, false);
+      setInputError(pinInput, false);
+    }
+  }
+  if (sicilInput && !errorMsg) sicilInput.focus();
+}
+
+function hideLoginOverlay() {
+  const overlay = document.getElementById("loginOverlay");
+  const errEl = document.getElementById("loginError");
+  setInputError(document.getElementById("loginSicilNo"), false);
+  setInputError(document.getElementById("loginPin"), false);
+  if (overlay) overlay.classList.add("hidden");
+  if (errEl) errEl.classList.add("hidden");
+}
+
+function applyAuthenticatedUser(user) {
+  currentUser = user;
+  const activeUserNameEl = document.getElementById("activeUserName");
+  const activeUserRoleEl = document.getElementById("activeUserRole");
+  if (activeUserNameEl) activeUserNameEl.innerText = user.full_name;
+  if (activeUserRoleEl) activeUserRoleEl.innerText = `(${user.username} • ${user.role})`;
+
+  const btnAdmin = document.getElementById("btnAdminUsers");
+  if (btnAdmin) {
+    if (isAdminUser(user)) {
+      btnAdmin.classList.remove("hidden");
+    } else {
+      btnAdmin.classList.add("hidden");
+    }
+  }
+
+  const opInput = document.getElementById("formOperatorName");
+  if (opInput) opInput.value = user.full_name;
+
+  updatePreviewRow();
+}
+
+async function checkAuthAndInit() {
+  try {
+    const res = await fetch("/api/auth/me");
+    if (res.ok) {
+      const user = await res.json();
+      hideLoginOverlay();
+      applyAuthenticatedUser(user);
+      startAppAfterAuth();
+    } else {
+      showLoginOverlay();
+    }
+  } catch (e) {
+    console.warn("Oturum kontrolü yapılamadı:", e);
+    showLoginOverlay();
+  }
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  const sicilNo = document.getElementById("loginSicilNo")?.value.trim() || "";
+  const pinCode = document.getElementById("loginPin")?.value.trim() || "";
+  const rememberMe = !!document.getElementById("loginRememberMe")?.checked;
+  const errEl = document.getElementById("loginError");
+  const btn = document.getElementById("btnLoginSubmit");
+
+  if (errEl) errEl.classList.add("hidden");
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: sicilNo,
+        pin_code: pinCode,
+        remember_me: rememberMe
+      })
+    });
+
+    if (res.ok) {
+      const user = await res.json();
+      const pinInput = document.getElementById("loginPin");
+      if (pinInput) pinInput.value = "";
+      hideLoginOverlay();
+      applyAuthenticatedUser(user);
+      startAppAfterAuth();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showLoginOverlay(err.detail || "Sicil numarası veya PIN hatalı!");
+    }
+  } catch (e) {
+    showLoginOverlay("Sunucuya bağlanılamadı.");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function logoutUser() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch (e) {
+    console.warn(e);
+  }
+  currentUser = null;
+  const btnAdmin = document.getElementById("btnAdminUsers");
+  if (btnAdmin) btnAdmin.classList.add("hidden");
+  showLoginOverlay();
+}
 
 async function loadUsers() {
   try {
     const res = await fetch("/api/auth/users");
+    if (res.status === 401) {
+      showLoginOverlay();
+      return;
+    }
     if (!res.ok) return;
     allUsers = await res.json();
-
-    // Modal açılır kutusunu doldur
-    const userDropdown = document.getElementById("userSelectDropdown");
-    if (userDropdown && Array.isArray(allUsers) && allUsers.length > 0) {
-      userDropdown.innerHTML = allUsers.map(u => `
-        <option value="${u.id}">${u.full_name} (${u.role} - ${u.department})</option>
-      `).join("");
-    }
 
     // Form operatör datalist'ini doldur (hızlı otomatik tamamlama için)
     const datalist = document.getElementById("operatorDatalist");
     if (datalist && Array.isArray(allUsers)) {
-      datalist.innerHTML = allUsers.map(u => `
-        <option value="${u.full_name}">${u.role} - ${u.department}</option>
-      `).join("");
+      datalist.innerHTML = allUsers
+        .filter(u => u.is_active)
+        .map(u => `<option value="${u.full_name}">${u.username} - ${u.department}</option>`)
+        .join("");
     }
 
-    // Aktif kullanıcıyı belirle (önce localStorage, sonra ilk kullanıcı)
-    const savedOpName = localStorage.getItem("saved_operator_name");
-    const savedUserId = localStorage.getItem("active_user_id");
-
-    let activeUser = null;
-    if (savedUserId) {
-      activeUser = allUsers.find(u => String(u.id) === String(savedUserId));
-    }
-    if (!activeUser && savedOpName) {
-      activeUser = allUsers.find(u => u.full_name.toUpperCase() === savedOpName.toUpperCase());
-    }
-    if (!activeUser && allUsers.length > 0) {
-      activeUser = allUsers[0];
-    }
-
-    if (activeUser) {
-      currentUser = activeUser;
-      if (userDropdown) userDropdown.value = activeUser.id;
-    }
-
-    // Üst bar rozetini güncelle
-    const activeUserNameEl = document.getElementById("activeUserName");
-    if (activeUserNameEl && currentUser) {
-      activeUserNameEl.innerText = currentUser.full_name;
-    }
-
-    // Formdaki operatör alanını doldur
-    const opInput = document.getElementById("formOperatorName");
-    if (opInput) {
-      if (savedOpName) {
-        opInput.value = savedOpName;
-      } else if (currentUser && currentUser.full_name) {
-        opInput.value = currentUser.full_name;
-      }
-    }
-
-    updatePreviewRow();
+    renderAdminUsersList();
   } catch (e) {
     console.warn("Kullanıcılar yüklenemedi:", e);
   }
 }
 
-function openUserModal() {
-  const modal = document.getElementById("userModal");
+function openAdminUsersModal() {
+  if (!isAdminUser(currentUser)) return;
+  const modal = document.getElementById("adminUsersModal");
   if (modal) {
-    const dropdown = document.getElementById("userSelectDropdown");
-    if (dropdown && currentUser && currentUser.id) {
-      dropdown.value = currentUser.id;
-    }
     modal.classList.remove("hidden");
+    loadUsers();
     if (window.lucide) lucide.createIcons();
   }
 }
 
-function closeUserModal() {
-  const modal = document.getElementById("userModal");
+function closeAdminUsersModal() {
+  const modal = document.getElementById("adminUsersModal");
   if (modal) modal.classList.add("hidden");
 }
 
-function confirmUserSelection() {
-  const dropdown = document.getElementById("userSelectDropdown");
-  if (!dropdown) return;
+function renderAdminUsersList() {
+  const listEl = document.getElementById("adminUsersList");
+  if (!listEl || !Array.isArray(allUsers)) return;
 
-  const selectedId = dropdown.value;
-  const found = allUsers.find(u => String(u.id) === String(selectedId));
-  if (found) {
-    currentUser = found;
-    localStorage.setItem("active_user_id", found.id);
-    localStorage.setItem("saved_operator_name", found.full_name);
-
-    // Üst bar rozetini güncelle
-    const activeUserNameEl = document.getElementById("activeUserName");
-    if (activeUserNameEl) activeUserNameEl.innerText = found.full_name;
-
-    // Formdaki operatör ismini güncelle
-    const opInput = document.getElementById("formOperatorName");
-    if (opInput) opInput.value = found.full_name;
-
-    const dorukTechEl = document.getElementById("dorukFormTechnician");
-    if (dorukTechEl) dorukTechEl.value = found.full_name;
-
-    updatePreviewRow();
+  if (allUsers.length === 0) {
+    listEl.innerHTML = `<div class="p-4 text-center text-slate-400">Kayıtlı kullanıcı yok.</div>`;
+    return;
   }
-  closeUserModal();
+
+  listEl.innerHTML = allUsers.map(u => `
+    <div class="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${u.is_active ? 'bg-white' : 'bg-slate-50 opacity-70'}">
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="px-2 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold rounded">${u.username}</span>
+          <span class="font-bold text-slate-900">${u.full_name}</span>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isAdminUser(u) ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}">${u.role}</span>
+          ${!u.is_active ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">PASİF</span>` : ''}
+        </div>
+        <div class="text-[11px] text-slate-500 mt-0.5">${u.department}</div>
+      </div>
+      <div class="flex items-center space-x-1.5">
+        <button type="button" onclick="resetUserPin(${u.id}, '${u.username}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition">
+          Şifre Sıfırla
+        </button>
+        ${currentUser && u.id !== currentUser.id ? `
+          <button type="button" onclick="toggleUserActive(${u.id}, ${!u.is_active})" class="px-2.5 py-1 ${u.is_active ? 'bg-rose-50 hover:bg-rose-100 text-rose-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'} rounded-lg font-semibold transition">
+            ${u.is_active ? 'Pasife Al' : 'Aktif Et'}
+          </button>
+        ` : ''}
+      </div>
+    </div>
+  `).join("");
+}
+
+function showAdminFormFeedback(message, isError = true) {
+  const fb = document.getElementById("adminUserFormFeedback");
+  if (!fb) return;
+  if (!message) {
+    fb.classList.add("hidden");
+    fb.textContent = "";
+    return;
+  }
+  fb.textContent = message;
+  fb.classList.remove("hidden", "bg-rose-50", "border-rose-200", "text-rose-700", "bg-emerald-50", "border-emerald-200", "text-emerald-700", "border");
+  if (isError) {
+    fb.classList.add("bg-rose-50", "border", "border-rose-200", "text-rose-700");
+  } else {
+    fb.classList.add("bg-emerald-50", "border", "border-emerald-200", "text-emerald-700");
+  }
+}
+
+async function submitAdminCreateUser(event) {
+  event.preventDefault();
+  const sicilEl = document.getElementById("newUserSicil");
+  const nameEl = document.getElementById("newUserFullName");
+  const deptEl = document.getElementById("newUserDept");
+  const roleEl = document.getElementById("newUserRole");
+  const pinEl = document.getElementById("newUserPin");
+
+  [sicilEl, nameEl, pinEl].forEach(el => setInputError(el, false));
+  showAdminFormFeedback("");
+
+  const payload = {
+    username: sicilEl.value.trim(),
+    full_name: nameEl.value.trim(),
+    department: deptEl.value.trim() || "Mekanik Bakım",
+    role: roleEl.value,
+    pin_code: pinEl.value.trim()
+  };
+
+  try {
+    const res = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      document.getElementById("adminCreateUserForm").reset();
+      deptEl.value = "Mekanik Bakım";
+      await loadUsers();
+      showAdminFormFeedback("✅ Yeni personel başarıyla eklendi.", false);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      const detail = err.detail || "Kullanıcı eklenemedi.";
+      if (detail.toLowerCase().includes("sicil")) {
+        setInputError(sicilEl, true);
+        sicilEl.focus();
+      } else if (detail.toLowerCase().includes("şifre")) {
+        setInputError(pinEl, true);
+        pinEl.focus();
+      } else {
+        setInputError(sicilEl, true);
+        setInputError(nameEl, true);
+        setInputError(pinEl, true);
+      }
+      showAdminFormFeedback(detail, true);
+    }
+  } catch (e) {
+    showAdminFormFeedback("Sunucuya bağlanılamadı.", true);
+  }
+}
+
+async function toggleUserActive(userId, newState) {
+  try {
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: newState })
+    });
+    if (res.ok) {
+      await loadUsers();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "İşlem başarısız."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
+}
+
+async function resetUserPin(userId, sicilNo) {
+  const newPin = prompt(`${sicilNo} sicil numaralı personel için yeni şifreyi girin\n(En az 6 karakter, büyük harf, küçük harf ve özel karakter):`);
+  if (!newPin || !newPin.trim()) return;
+  try {
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin_code: newPin.trim() })
+    });
+    if (res.ok) {
+      alert(`✅ ${sicilNo} için şifre güncellendi.`);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Şifre güncellenemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
 }
 
 function onOperatorNameInput() {
