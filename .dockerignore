@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.git/
+.gitignore
+.env
+data/
+exports/
+*.db
+*.sqlite
+*.log
+start.bat
+push_to_github.bat
