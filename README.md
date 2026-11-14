@@ -46,6 +46,7 @@ cd C:\Users\ecem.sayar\.gemini\antigravity\scratch\bakim-asistani
 
 - **Bilgisayardan Erişim:** `http://localhost:8000`
 - **Fabrika İçi Telefondan Erişim:** `http://<BILGISAYAR_IP_ADRESI>:8000`
+- **Canlı Bulut Ortamı (AWS Lightsail):** `https://18.156.97.64.sslip.io`
 
 ---
 
