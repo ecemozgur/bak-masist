@@ -115,7 +115,7 @@ function setFormDate(dateObj) {
   const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
   const yyyy = dateObj.getFullYear();
 
-  if (dayNameEl) dayNameEl.innerText = dayName;
+  if (dayNameEl) dayNameEl.innerText = dayName ? `(${dayName})` : "";
   if (previewColA) previewColA.innerText = `${dd}.${mm}.${yyyy}`;
 }
 
@@ -141,7 +141,7 @@ function onDateChanged() {
 
     const dayNameEl = document.getElementById("formDateDayName");
     const previewColA = document.getElementById("previewColA");
-    if (dayNameEl) dayNameEl.innerText = dayName;
+    if (dayNameEl) dayNameEl.innerText = dayName ? `(${dayName})` : "";
     if (previewColA) previewColA.innerText = `${dd}.${mm}.${yyyy}`;
   }
 
@@ -242,11 +242,14 @@ function switchTab(tabId) {
 // ----------------- SESLİ DİKTE MODALI (MİKROFON PENCERESİ) -----------------
 let modalSpeechRecognizer = null;
 let isModalRecording = false;
+let voiceModalOpenedAt = 0;
 
-function openVoiceDictationModal() {
+function openVoiceDictationModal(e) {
+  if (e && e.stopPropagation) e.stopPropagation();
   const modal = document.getElementById("voiceDictationModal");
   if (!modal) return;
 
+  voiceModalOpenedAt = Date.now();
   const currentDesc = document.getElementById("formJobDescription")?.value?.trim() || "";
   const output = document.getElementById("modalDictationOutput");
   if (output) output.value = currentDesc;
@@ -259,6 +262,14 @@ function openVoiceDictationModal() {
 
   updateModalDictationUI(false);
   modal.classList.remove("hidden");
+}
+
+function handleVoiceModalBackdropClick(e) {
+  // Modal açıldıktan hemen sonraki ilk 400ms içindeki kazara tetiklenmeleri önle
+  if (Date.now() - voiceModalOpenedAt < 400) return;
+  if (e && e.target && e.target.id === "voiceDictationModal") {
+    closeVoiceDictationModal();
+  }
 }
 
 function closeVoiceDictationModal() {
@@ -1872,6 +1883,182 @@ async function resetUserPin(userId, sicilNo) {
   }
 }
 
+// ----------------- OPERATÖR SEÇİMİ & ÇOKLU OPERATÖR DESTEĞİ -----------------
+let selectedOperators = new Set();
+
+function openOperatorSelectModal() {
+  const modal = document.getElementById("operatorSelectModal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+
+  // Mevcut formOperatorName içindeki isimleri parse et
+  selectedOperators.clear();
+  const currentVal = document.getElementById("formOperatorName")?.value || "";
+  if (currentVal.trim()) {
+    currentVal.split(/[,/]/).forEach(item => {
+      const trimmed = item.trim().toUpperCase();
+      if (trimmed) selectedOperators.add(trimmed);
+    });
+  }
+
+  const searchInput = document.getElementById("opSearchInput");
+  if (searchInput) searchInput.value = "";
+
+  if (!allUsers || allUsers.length === 0) {
+    loadUsers().then(() => {
+      renderOperatorModalList();
+      updateSelectedChips();
+    });
+  } else {
+    renderOperatorModalList();
+    updateSelectedChips();
+  }
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function openUserModal() {
+  openOperatorSelectModal();
+}
+
+function closeOperatorSelectModal() {
+  const modal = document.getElementById("operatorSelectModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function renderOperatorModalList() {
+  const listEl = document.getElementById("opModalUserList");
+  if (!listEl) return;
+
+  const q = (document.getElementById("opSearchInput")?.value || "").trim().toLowerCase();
+  const activeUsers = (allUsers || []).filter(u => u.is_active);
+
+  const filtered = activeUsers.filter(u => {
+    if (!q) return true;
+    return (
+      (u.full_name && u.full_name.toLowerCase().includes(q)) ||
+      (u.username && u.username.toLowerCase().includes(q)) ||
+      (u.department && u.department.toLowerCase().includes(q))
+    );
+  });
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs">Aradığınız kriterde personel bulunamadı.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(u => {
+    const isSelected = selectedOperators.has((u.full_name || "").toUpperCase());
+    const safeName = (u.full_name || "").replace(/'/g, "\\'");
+    return `
+      <div onclick="toggleOperatorSelection('${safeName}')" class="p-2.5 hover:bg-slate-50 rounded-xl cursor-pointer flex items-center justify-between transition ${isSelected ? 'bg-blue-50/70 border border-blue-200' : ''}">
+        <div class="flex items-center space-x-3">
+          <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleOperatorSelection('${safeName}')" class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-slate-800">${u.full_name}</span>
+              <span class="px-1.5 py-0.2 bg-slate-100 text-slate-600 font-mono text-[10px] rounded font-semibold">${u.username}</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-0.5">${u.department || 'Bakım'} • ${u.role || 'TEKNISYEN'}</p>
+          </div>
+        </div>
+        <span class="text-[11px] font-semibold ${isSelected ? 'text-blue-600' : 'text-slate-400'}">
+          ${isSelected ? '✓ Seçildi' : 'Seç'}
+        </span>
+      </div>
+    `;
+  }).join("");
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function filterOperatorList() {
+  renderOperatorModalList();
+}
+
+function toggleOperatorSelection(name) {
+  if (!name) return;
+  const upper = name.trim().toUpperCase();
+  if (selectedOperators.has(upper)) {
+    selectedOperators.delete(upper);
+  } else {
+    selectedOperators.add(upper);
+  }
+  renderOperatorModalList();
+  updateSelectedChips();
+}
+
+function selectOnlyMeOperator() {
+  selectedOperators.clear();
+  if (currentUser && currentUser.full_name) {
+    selectedOperators.add(currentUser.full_name.trim().toUpperCase());
+  }
+  renderOperatorModalList();
+  updateSelectedChips();
+}
+
+function clearSelectedOperators() {
+  selectedOperators.clear();
+  renderOperatorModalList();
+  updateSelectedChips();
+}
+
+function removeSelectedOperatorChip(name) {
+  if (!name) return;
+  selectedOperators.delete(name.trim().toUpperCase());
+  renderOperatorModalList();
+  updateSelectedChips();
+}
+
+function updateSelectedChips() {
+  const container = document.getElementById("opSelectedChipsContainer");
+  const badge = document.getElementById("opSelectedCountBadge");
+  const btnApply = document.getElementById("btnApplyOpSelection");
+  const count = selectedOperators.size;
+
+  if (badge) {
+    badge.innerText = `${count} kişi seçildi`;
+  }
+  if (btnApply) {
+    btnApply.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i><span>Seçimi Uygula (${count})</span>`;
+    if (window.lucide) lucide.createIcons();
+  }
+
+  if (!container) return;
+  if (count === 0) {
+    container.innerHTML = `<span class="text-[11px] text-slate-400 italic">Henüz operatör seçilmedi.</span>`;
+    return;
+  }
+
+  const chipsHtml = Array.from(selectedOperators).map(name => `
+    <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-bold">
+      <span>${name}</span>
+      <button type="button" onclick="event.stopPropagation(); removeSelectedOperatorChip('${name.replace(/'/g, "\\'")}')" class="text-blue-600 hover:text-blue-900 rounded-full p-0.5">
+        <i data-lucide="x" class="w-3 h-3"></i>
+      </button>
+    </span>
+  `).join("");
+
+  container.innerHTML = chipsHtml;
+  if (window.lucide) lucide.createIcons();
+}
+
+function applyOperatorSelection() {
+  const opInput = document.getElementById("formOperatorName");
+  if (!opInput) return;
+
+  const names = Array.from(selectedOperators);
+  if (names.length === 0) {
+    alert("Lütfen en az bir operatör seçin.");
+    return;
+  }
+
+  const formatted = names.join(", ");
+  opInput.value = formatted;
+  onOperatorNameInput();
+  closeOperatorSelectModal();
+}
+
 function onOperatorNameInput() {
   const opInput = document.getElementById("formOperatorName");
   if (opInput) {
@@ -2029,3 +2216,13 @@ function stopDescRecording() {
   const statusDiv = document.getElementById("descRecordingStatus");
   if (statusDiv) statusDiv.classList.add("hidden");
 }
+
+// ESC tuşu ile açık tüm modalları kapatma
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (typeof closeVoiceDictationModal === "function") closeVoiceDictationModal();
+    if (typeof closeOperatorSelectModal === "function") closeOperatorSelectModal();
+    if (typeof closeCriteriaModal === "function") closeCriteriaModal();
+    if (typeof closeAdminUsersModal === "function") closeAdminUsersModal();
+  }
+});

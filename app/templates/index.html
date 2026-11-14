@@ -134,9 +134,9 @@
           <div>
             <div class="flex items-center gap-2">
               <span class="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-md">FR-PE-0657</span>
-              <h3 class="text-base font-bold text-slate-800">Vardiya Bakım Giriş Formu</h3>
+              <h3 class="text-base font-bold text-slate-800">Vardiya Günlük Rapor</h3>
             </div>
-            <p class="text-xs text-slate-500 mt-0.5">Vardiya bakım girişini doldurun veya açıklamayı mikrofonla sesli yazdırın; formu onaylayıp sunucu Excel dosyasına kaydedin.</p>
+            <p class="text-xs text-slate-500 mt-0.5">Vardiya günlük raporunu doldurun veya açıklamayı mikrofonla sesli yazdırın; formu onaylayıp sunucu Excel dosyasına kaydedin.</p>
           </div>
 
           <div class="flex items-center space-x-2">
@@ -153,31 +153,35 @@
 
         <!-- Düzenleme Formu -->
         <form id="maintenanceForm" onsubmit="submitServerExcelLog(event)" class="mt-5 space-y-4">
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3.5">
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label for="formDateInput" class="block text-xs font-semibold text-slate-700">Tarih *</label>
-                <button type="button" onclick="setTodayDate()" title="Bugünün tarihine dön" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3.5 items-start">
+            <div class="flex flex-col justify-start">
+              <div class="h-6 flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <label for="formDateInput" class="block text-xs font-semibold text-slate-700 whitespace-nowrap">Tarih *</label>
+                  <span id="formDateDayName" class="text-[11px] text-slate-500 font-medium truncate"></span>
+                </div>
+                <button type="button" onclick="setTodayDate()" title="Bugünün tarihine dön" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5 whitespace-nowrap shrink-0">
                   <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Bugün
                 </button>
               </div>
-              <input type="date" id="formDateInput" onchange="onDateChanged()" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 cursor-pointer">
-              <span id="formDateDayName" class="block text-[11px] text-slate-500 font-medium mt-1"></span>
+              <input type="date" id="formDateInput" onchange="onDateChanged()" class="w-full h-10 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 cursor-pointer box-border">
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Vardiya (Sayfa) *</label>
-              <select id="formShift" onchange="updatePreviewRow()" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white">
+            <div class="flex flex-col justify-start">
+              <div class="h-6 flex items-center justify-between mb-1.5">
+                <label for="formShift" class="block text-xs font-semibold text-slate-700 whitespace-nowrap">Vardiya (Sayfa) *</label>
+              </div>
+              <select id="formShift" onchange="updatePreviewRow()" class="w-full h-10 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white text-slate-800 box-border">
                 <option value="08.00-16.00">08.00 - 16.00</option>
                 <option value="16.00-24.00">16.00 - 24.00</option>
                 <option value="24.00 - 08.00">24.00 - 08.00</option>
               </select>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                <span>Bina *</span>
-                <span class="text-[10px] text-blue-600 font-bold">A/B/C</span>
-              </label>
-              <select id="formBuilding" onchange="onBuildingChange()" class="w-full px-3 py-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold bg-blue-50/50 text-blue-900">
+            <div class="flex flex-col justify-start">
+              <div class="h-6 flex items-center justify-between mb-1.5">
+                <label for="formBuilding" class="block text-xs font-semibold text-slate-700 whitespace-nowrap">Bina *</label>
+                <span class="text-[10px] text-blue-600 font-bold shrink-0">A/B/C</span>
+              </div>
+              <select id="formBuilding" onchange="onBuildingChange()" class="w-full h-10 px-3 py-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold bg-blue-50/50 text-blue-900 box-border">
                 <option value="HİÇBİRİ">Hiçbiri</option>
                 <option value="A BİNASI">A Binası</option>
                 <option value="B BİNASI">B Binası</option>
@@ -185,33 +189,33 @@
                 <option value="BÜTÜN BİNALAR">Bütün Binalar</option>
               </select>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                <span>Hat Numarası</span>
-                <span class="text-[10px] text-slate-400 font-normal">örn: Hat 1, 1404</span>
-              </label>
-              <input type="text" id="formLineNo" list="lineDatalist" oninput="updatePreviewRow()" placeholder="örn: HAT 1 (AS3001 MONTAJ)" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white">
+            <div class="flex flex-col justify-start">
+              <div class="h-6 flex items-center justify-between mb-1.5">
+                <label for="formLineNo" class="block text-xs font-semibold text-slate-700 whitespace-nowrap">Hat Numarası</label>
+                <span class="text-[10px] text-slate-400 font-normal truncate">örn: Hat 1</span>
+              </div>
+              <input type="text" id="formLineNo" list="lineDatalist" oninput="updatePreviewRow()" placeholder="örn: HAT 1 (AS3001 MONTAJ)" class="w-full h-10 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white box-border">
               <datalist id="lineDatalist"></datalist>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                <span>Makine Kodu</span>
-                <span class="text-[10px] text-slate-400 font-normal">örn: AS1404</span>
-              </label>
-              <input type="text" id="formMachineCode" list="machineCodeDatalist" oninput="onMachineCodeInput()" placeholder="örn: AS3001-1, PT2101, RL1001" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white">
+            <div class="flex flex-col justify-start">
+              <div class="h-6 flex items-center justify-between mb-1.5">
+                <label for="formMachineCode" class="block text-xs font-semibold text-slate-700 whitespace-nowrap">Makine Kodu</label>
+                <span class="text-[10px] text-slate-400 font-normal truncate">örn: AS1404</span>
+              </div>
+              <input type="text" id="formMachineCode" list="machineCodeDatalist" oninput="onMachineCodeInput()" placeholder="örn: AS3001-1, PT2101, RL1001" class="w-full h-10 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white box-border">
               <datalist id="machineCodeDatalist"></datalist>
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label for="formCriterionSelect" class="block text-xs font-semibold text-slate-700">Kriter (1 - 26 Tablosu) *</label>
-                <button type="button" onclick="openCriteriaModal()" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-start">
+            <div class="flex flex-col justify-start">
+              <div class="h-6 flex items-center justify-between mb-1.5">
+                <label for="formCriterionSelect" class="block text-xs font-semibold text-slate-700 whitespace-nowrap">Kriter (1 - 26 Tablosu) *</label>
+                <button type="button" onclick="openCriteriaModal()" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5 shrink-0">
                   <i data-lucide="list" class="w-3 h-3"></i> 26'lı Tabloyu Gör
                 </button>
               </div>
-              <select id="formCriterionSelect" onchange="onCriterionChange()" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white text-slate-800">
+              <select id="formCriterionSelect" onchange="onCriterionChange()" class="w-full h-10 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white text-slate-800 box-border">
                 <option value="1">1 - MAKİNA BAKIM</option>
                 <option value="2">2 - KALIP BAKIM</option>
                 <option value="3">3 - ELEKTRİK ARIZA</option>
@@ -240,18 +244,21 @@
                 <option value="26">26 - QCC</option>
               </select>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Harcanan Süre (Dakika) *</label>
-              <input type="number" id="formTimeSpent" oninput="updatePreviewRow()" value="30" min="5" step="5" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-slate-900">
+            <div class="flex flex-col justify-start">
+              <div class="h-6 flex items-center justify-between mb-1.5">
+                <label for="formTimeSpent" class="block text-xs font-semibold text-slate-700 whitespace-nowrap">Harcanan Süre (Dakika) *</label>
+                <span class="text-[10px] text-slate-400 font-normal shrink-0">dk</span>
+              </div>
+              <input type="number" id="formTimeSpent" oninput="updatePreviewRow()" value="30" min="5" step="5" required class="w-full h-10 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-slate-900 bg-white box-border">
             </div>
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label for="formOperatorName" class="block text-xs font-semibold text-slate-700">İşi Yapan (Operatör) *</label>
-                <button type="button" onclick="openUserModal()" title="Kullanıcı Seç / Değiştir" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5">
-                  <i data-lucide="user-check" class="w-3 h-3"></i> Seç / Değiştir
+            <div class="flex flex-col justify-start">
+              <div class="h-6 flex items-center justify-between mb-1.5">
+                <label for="formOperatorName" class="block text-xs font-semibold text-slate-700 whitespace-nowrap">İşi Yapan (Operatör) *</label>
+                <button type="button" onclick="openOperatorSelectModal()" title="Kullanıcı Seç / Değiştir" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-1 shrink-0">
+                  <i data-lucide="users" class="w-3.5 h-3.5"></i> Çoklu Seç / Değiştir
                 </button>
               </div>
-              <input type="text" id="formOperatorName" list="operatorDatalist" oninput="onOperatorNameInput()" required placeholder="İsim soyisim yazın veya seçin" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white shadow-sm">
+              <input type="text" id="formOperatorName" list="operatorDatalist" oninput="onOperatorNameInput()" required placeholder="İsim soyisim yazın veya Çoklu Seç'e tıklayın" class="w-full h-10 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-bold text-slate-800 bg-white shadow-sm box-border">
               <datalist id="operatorDatalist">
                 <!-- Otomatik doldurulacak -->
               </datalist>
@@ -728,16 +735,16 @@
               <span>Takvim Bazlı Raporlama</span>
             </div>
             <h2 class="text-xl font-bold text-slate-900">Yapılan İşler & Excel İndirme Merkezi</h2>
-            <p class="text-xs text-slate-500 mt-0.5">Takvimden dilediğiniz günü seçerek fabrika resmi server Excel'ini (FR-PE-0657) ve yapılan işler raporunu anında indirin.</p>
+            <p class="text-xs text-slate-500 mt-0.5">Takvimden dilediğiniz günü seçerek günlük raporu (FR-PE-0657) ve yapılan işler listesini anında indirin.</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <button onclick="downloadSelectedDateServerExcel()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition active:scale-95">
               <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
-              <span>Resmi Server Excel'ini İndir</span>
+              <span>Günlük Raporu İndir</span>
             </button>
             <button onclick="downloadFilteredExcel()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 shadow-sm transition active:scale-95">
               <i data-lucide="download" class="w-4 h-4"></i>
-              <span>Faaliyet Raporu (.xlsx)</span>
+              <span>Doruk Arıza Kayıtları (.xlsx)</span>
             </button>
           </div>
         </div>
@@ -809,8 +816,8 @@
           <p class="font-bold text-slate-800 flex items-center gap-1.5">
             <i data-lucide="check" class="w-4 h-4 text-emerald-600"></i> İki Format Desteği:
           </p>
-          <p>• <b>Resmi Server Excel'i:</b> İş yerinizin <code>FR-PE-0657</code> şablonuna birebir uyumlu; 08.00-16.00, 16.00-24.00 ve 24.00-08.00 vardiya sayfalarını içeren orijinal Excel dosyasıdır.</p>
-          <p>• <b>Faaliyet Raporu (.xlsx):</b> Seçilen tarih ve makineye ait toplam duruş sürelerini formülle hesaplayan genel bakım listesidir.</p>
+          <p>• <b>Günlük Rapor (FR-PE-0657):</b> İş yerinizin şablonuna birebir uyumlu; 08.00-16.00, 16.00-24.00 ve 24.00-08.00 vardiya sayfalarını içeren orijinal Excel dosyasıdır.</p>
+          <p>• <b>Doruk Arıza Kayıtları (.xlsx):</b> Seçilen tarih ve makineye ait toplam duruş sürelerini formülle hesaplayan arıza ve bakım listesidir.</p>
         </div>
       </div>
     </section>
@@ -844,10 +851,10 @@
   </nav>
 
   <!-- ================= SESLİ DİKTE MODALI (MİKROFON PENCERESİ) ================= -->
-  <div id="voiceDictationModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+  <div id="voiceDictationModal" onclick="handleVoiceModalBackdropClick(event)" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in duration-200">
       <!-- Modal Header -->
-      <div class="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+      <div class="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
         <div class="flex items-center space-x-2.5">
           <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-sm">
             <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -861,13 +868,17 @@
             <p class="text-xs text-blue-300">Konuşun, söyledikleriniz anında metne dökülsün</p>
           </div>
         </div>
-        <button type="button" onclick="closeVoiceDictationModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        <button type="button" onclick="closeVoiceDictationModal()" title="Pencereyi Kapat" class="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition shadow-md cursor-pointer active:scale-95">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          <span>Kapat</span>
         </button>
       </div>
 
-      <!-- Modal Body -->
-      <div class="p-6 space-y-4">
+      <!-- Modal Body (Kaydırılabilir Alan) -->
+      <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
         <!-- Büyük Mikrofon Butonu -->
         <div class="flex flex-col items-center justify-center py-2">
           <button type="button" id="modalMicBtn" onclick="toggleModalDictation()" class="w-20 h-20 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-xl transition-all active:scale-95 focus:outline-none">
@@ -903,26 +914,16 @@
             <button type="button" onclick="appendToModalText('KALIP İTİCİ PİM TEMİZLENDİ VE DANDORİ TAMAMLANDI.')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 font-medium">+ Dandori & Kalıp</button>
           </div>
         </div>
-
-        <!-- Windows Dahili Sesli Yazma Kısayolu -->
-        <div class="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-xs text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div class="flex items-start sm:items-center gap-2">
-            <span class="text-xl">🎙️</span>
-            <div>
-              <p class="font-bold text-blue-900">Windows Dahili Sesle Yazma (En Güvenilir Yol):</p>
-              <p class="text-[11px] text-blue-700 mt-0.5">Klavyenizden <kbd class="px-1.5 py-0.5 bg-white border border-blue-300 rounded font-bold shadow-xs">Windows Tuşu</kbd> + <kbd class="px-1.5 py-0.5 bg-white border border-blue-300 rounded font-bold shadow-xs">H</kbd> tuşlarına basarak doğrudan Türkçe sesle yazdırabilirsiniz.</p>
-            </div>
-          </div>
-          <button type="button" onclick="activateWindowsDictation()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shrink-0 shadow-xs flex items-center justify-center gap-1 transition">
-            <span>Kutuyu Seç & Başlat</span>
-          </button>
-        </div>
       </div>
 
       <!-- Modal Footer -->
-      <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-        <button type="button" onclick="closeVoiceDictationModal()" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition">
-          İptal
+      <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+        <button type="button" onclick="closeVoiceDictationModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          <span>Vazgeç / Kapat</span>
         </button>
         <button type="button" onclick="applyModalDictationToForm()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition active:scale-95">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1202,6 +1203,67 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20261113_1645"></script>
+  <!-- ================= OPERATÖR SEÇİM & ÇOKLU OPERATÖR MODALI ================= -->
+  <div id="operatorSelectModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Başlık -->
+      <div class="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-blue-100 text-blue-700 rounded-xl flex items-center justify-center">
+            <i data-lucide="users" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Operatör Seçimi (Tekli / Çoklu)</h3>
+            <p class="text-xs text-slate-500">İşi yapan personeli değiştirin veya birden fazla operatör seçin.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeOperatorSelectModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Arama ve Hızlı Filtre Barı -->
+      <div class="p-4 border-b border-slate-100 bg-white space-y-2.5">
+        <div class="relative">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+          <input type="text" id="opSearchInput" oninput="filterOperatorList()" placeholder="Personel adı, sicil veya bölüm ile ara..." class="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+        <div class="flex items-center justify-between text-xs pt-1">
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="selectOnlyMeOperator()" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-semibold transition flex items-center gap-1">
+              <i data-lucide="user" class="w-3.5 h-3.5"></i> Sadece Kendimi Seç
+            </button>
+            <button type="button" onclick="clearSelectedOperators()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md font-semibold transition">
+              Temizle
+            </button>
+          </div>
+          <span id="opSelectedCountBadge" class="text-slate-500 font-bold">0 kişi seçildi</span>
+        </div>
+        <!-- Seçili Rozetler Alanı -->
+        <div id="opSelectedChipsContainer" class="flex flex-wrap gap-1.5 pt-1 max-h-24 overflow-y-auto"></div>
+      </div>
+
+      <!-- Personel Listesi (Scrollable) -->
+      <div class="p-3 overflow-y-auto flex-1 divide-y divide-slate-100" id="opModalUserList" style="max-height: 380px;">
+        <div class="p-6 text-center text-slate-400 text-xs">Personeller yükleniyor...</div>
+      </div>
+
+      <!-- Modal Alt Butonlar -->
+      <div class="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+        <span class="text-[11px] text-slate-500">Seçilenler virgülle birleştirilecektir.</span>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeOperatorSelectModal()" class="px-3.5 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-100 transition">
+            Vazgeç
+          </button>
+          <button type="button" onclick="applyOperatorSelection()" id="btnApplyOpSelection" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Seçimi Uygula</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js?v=20261114_1323"></script>
 </body>
 </html>

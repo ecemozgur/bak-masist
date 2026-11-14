@@ -345,7 +345,7 @@ class ExcelService:
 
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = f"Bakım Raporu {report_date}"
+        ws.title = f"Doruk Arıza {report_date}"[:31]
         ws.views.sheetView[0].showGridLines = True
 
         header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
@@ -356,7 +356,7 @@ class ExcelService:
         box_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
         ws.merge_cells("A1:H1")
-        ws["A1"] = "FABRİKA GÜNLÜK BAKIM & ONARIM FAALİYET RAPORU"
+        ws["A1"] = "DORUK ARIZA KAYITLARI RAPORU"
         ws["A1"].font = title_font
         ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
 
@@ -378,7 +378,7 @@ class ExcelService:
                 cell.font = regular_font
                 cell.border = box_border
 
-        filename = f"Bakim_Raporu_{report_date}_{datetime.now().strftime('%H%M%S')}.xlsx"
+        filename = f"Doruk_Ariza_Kayitlari_{report_date}_{datetime.now().strftime('%H%M%S')}.xlsx"
         file_path = EXPORTS_DIR / filename
         wb.save(str(file_path))
         return str(file_path)
