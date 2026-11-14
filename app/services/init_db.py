@@ -1,20 +1,34 @@
+import os
 from datetime import datetime, timedelta
 from app.database import engine, Base, SessionLocal
 from app.models import User, Machine, MaintenanceLog
+from app.services.auth_service import hash_pin, is_pin_hashed
 
 def init_database():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
-    # Kullanıcılar var mı?
+    # İlk Admin hesabı var mı? (Diğer personeller Admin panelinden eklenir)
     if db.query(User).count() == 0:
-        users = [
-            User(username="bakimci1", full_name="Ahmet Yılmaz", role="TEKNISYEN", department="Mekanik Bakım", pin_code="1234"),
-            User(username="bakimci2", full_name="Mehmet Demir", role="TEKNISYEN", department="Elektrik Bakım", pin_code="1234"),
-            User(username="amir", full_name="Ali Kaya", role="AMIR", department="Bakım Onarım Şefliği", pin_code="9999"),
-        ]
-        db.add_all(users)
+        initial_admin_pin = os.getenv("ADMIN_INITIAL_PIN", "Admin@2026")
+        admin_user = User(
+            username="admin",
+            full_name="Ecem Sayar Özgür",
+            role="ADMIN",
+            department="Bakım Onarım Yönetimi",
+            pin_code=hash_pin(initial_admin_pin),
+        )
+        db.add(admin_user)
         db.commit()
+    else:
+        # Mevcut düz metin PIN'leri güvenli hash'e yükselt
+        upgraded = False
+        for existing_user in db.query(User).all():
+            if existing_user.pin_code and not is_pin_hashed(existing_user.pin_code):
+                existing_user.pin_code = hash_pin(existing_user.pin_code)
+                upgraded = True
+        if upgraded:
+            db.commit()
 
     # Makineler var mı?
     if db.query(Machine).count() == 0:
@@ -34,8 +48,8 @@ def init_database():
         m1 = db.query(Machine).filter(Machine.code == "PRES-01").first()
         m2 = db.query(Machine).filter(Machine.code == "PRES-02").first()
         m3 = db.query(Machine).filter(Machine.code == "CNC-01").first()
-        u1 = db.query(User).filter(User.username == "bakimci1").first()
-        u2 = db.query(User).filter(User.username == "bakimci2").first()
+        u1 = db.query(User).filter(User.role == "ADMIN").first() or db.query(User).first()
+        u2 = u1
 
         today = datetime.now()
         logs = [

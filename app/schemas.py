@@ -4,14 +4,22 @@ from pydantic import BaseModel
 
 class UserLogin(BaseModel):
     username: str
-    pin_code: Optional[str] = "1234"
+    pin_code: str
+    remember_me: bool = True
 
 class UserCreate(BaseModel):
     username: str
     full_name: str
     role: str = "TEKNISYEN"
     department: str = "Mekanik Bakım"
-    pin_code: str = "1234"
+    pin_code: str
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    department: Optional[str] = None
+    pin_code: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class UserResponse(BaseModel):
     id: int

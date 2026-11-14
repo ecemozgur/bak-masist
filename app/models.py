@@ -9,9 +9,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     full_name = Column(String(100), nullable=False)
-    role = Column(String(20), default="TEKNISYEN")  # TEKNISYEN, AMIR, YONETICI
+    role = Column(String(20), default="TEKNISYEN")  # TEKNISYEN, ADMIN
     department = Column(String(50), default="Mekanik Bakım")  # Mekanik, Elektrik, Otomasyon
-    pin_code = Column(String(10), default="1234")  # Sahada hızlı giriş için PIN
+    pin_code = Column(String(255), nullable=False, default="1234")  # Hashlenmiş PIN kodu
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
