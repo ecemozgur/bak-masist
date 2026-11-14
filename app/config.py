@@ -15,7 +15,9 @@ EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 _raw_db_url = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'bakim_sistemi.db'}")
 if _raw_db_url.startswith("postgres://"):
-    _raw_db_url = _raw_db_url.replace("postgres://", "postgresql://", 1)
+    _raw_db_url = _raw_db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+elif _raw_db_url.startswith("postgresql://") and "+psycopg" not in _raw_db_url:
+    _raw_db_url = _raw_db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 DATABASE_URL = _raw_db_url
 
 # Doruk Otomasyon Varsayılan Ayarları (Faz 2'de aktif edilecek; varsayılan olarak kapalı)

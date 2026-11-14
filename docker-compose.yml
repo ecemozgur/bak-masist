@@ -22,7 +22,7 @@ services:
     environment:
       PORT: "8000"
       DATA_DIR: /data
-      DATABASE_URL: postgresql://${POSTGRES_USER:-bakim}:${POSTGRES_PASSWORD:-bakim_db_pass_degistir}@db:5432/${POSTGRES_DB:-bakim_sistemi}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-bakim}:${POSTGRES_PASSWORD:-bakim_db_pass_degistir}@db:5432/${POSTGRES_DB:-bakim_sistemi}
     volumes:
       - ./data:/data
     depends_on:
