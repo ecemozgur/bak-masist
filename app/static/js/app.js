@@ -40,6 +40,7 @@ function startAppAfterAuth() {
   loadMachines();
   loadRecentLogs();
   loadServerExcelStatus();
+  loadHandoverTasks();
   if (document.getElementById("tab-doruk-sync")) {
     loadDorukSyncLogs();
   }
@@ -76,6 +77,16 @@ function initDateAndShift() {
   const opNameInput = document.getElementById("formOperatorName");
   if (opNameInput && !opNameInput.value && currentUser) {
     opNameInput.value = currentUser.full_name;
+  }
+
+  // İş Aktarım Formu alanlarını hazırla
+  const handoverDateInput = document.getElementById("handoverDateFilter");
+  if (handoverDateInput && !handoverDateInput.value) {
+    handoverDateInput.value = formatDateToIso(now);
+  }
+  const handoverPersonInput = document.getElementById("handoverPerson");
+  if (handoverPersonInput && !handoverPersonInput.value && currentUser) {
+    handoverPersonInput.value = currentUser.full_name;
   }
 
   // Yapılan İşler & Excel Rapor sekmesi alanlarını hazırla
@@ -219,7 +230,7 @@ function switchTab(tabId) {
   }
 
   // Mobile tab stilleri
-  ["voice-report", "machines", "doruk-sync", "chatbot", "excel-export"].forEach(id => {
+  ["voice-report", "handover", "machines", "doruk-sync", "chatbot", "excel-export"].forEach(id => {
     const mTab = document.getElementById(`mtab-${id}`);
     if (mTab) {
       if (id === tabId) {
@@ -234,6 +245,10 @@ function switchTab(tabId) {
 
   if (tabId === "excel-export") {
     onDoneJobsDateChanged();
+  }
+
+  if (tabId === "handover") {
+    loadHandoverTasks();
   }
 
   if (window.lucide) lucide.createIcons();
@@ -286,8 +301,11 @@ function appendToModalText(sampleText) {
 }
 
 let dorukSpeechTarget = null;
+let handoverSpeechTarget = null;
+
 function openVoiceDictationModalForDoruk() {
   dorukSpeechTarget = document.getElementById("dorukFormDescription");
+  handoverSpeechTarget = null;
   openVoiceDictationModal();
   const output = document.getElementById("modalDictationOutput");
   if (output && dorukSpeechTarget) {
@@ -295,9 +313,22 @@ function openVoiceDictationModalForDoruk() {
   }
 }
 
+function openVoiceDictationForHandover() {
+  handoverSpeechTarget = document.getElementById("handoverTaskDesc");
+  dorukSpeechTarget = null;
+  openVoiceDictationModal();
+  const output = document.getElementById("modalDictationOutput");
+  if (output && handoverSpeechTarget) {
+    output.value = handoverSpeechTarget.value || "";
+  }
+}
+
 function applyModalDictationToForm() {
   const output = document.getElementById("modalDictationOutput");
-  if (dorukSpeechTarget && output) {
+  if (handoverSpeechTarget && output) {
+    handoverSpeechTarget.value = output.value.trim();
+    handoverSpeechTarget = null;
+  } else if (dorukSpeechTarget && output) {
     dorukSpeechTarget.value = output.value.trim().toUpperCase();
     dorukSpeechTarget = null;
   } else {
@@ -1885,15 +1916,17 @@ async function resetUserPin(userId, sicilNo) {
 
 // ----------------- OPERATÖR SEÇİMİ & ÇOKLU OPERATÖR DESTEĞİ -----------------
 let selectedOperators = new Set();
+let operatorModalTargetInput = "formOperatorName";
 
-function openOperatorSelectModal() {
+function openOperatorSelectModal(targetInputId) {
+  operatorModalTargetInput = targetInputId || "formOperatorName";
   const modal = document.getElementById("operatorSelectModal");
   if (!modal) return;
   modal.classList.remove("hidden");
 
-  // Mevcut formOperatorName içindeki isimleri parse et
+  // Mevcut formOperatorName veya hedef input içindeki isimleri parse et
   selectedOperators.clear();
-  const currentVal = document.getElementById("formOperatorName")?.value || "";
+  const currentVal = document.getElementById(operatorModalTargetInput)?.value || "";
   if (currentVal.trim()) {
     currentVal.split(/[,/]/).forEach(item => {
       const trimmed = item.trim().toUpperCase();
@@ -1915,6 +1948,10 @@ function openOperatorSelectModal() {
   }
 
   if (window.lucide) lucide.createIcons();
+}
+
+function openHandoverOperatorModal() {
+  openOperatorSelectModal("handoverPerson");
 }
 
 function openUserModal() {
@@ -2044,7 +2081,8 @@ function updateSelectedChips() {
 }
 
 function applyOperatorSelection() {
-  const opInput = document.getElementById("formOperatorName");
+  const targetId = operatorModalTargetInput || "formOperatorName";
+  const opInput = document.getElementById(targetId);
   if (!opInput) return;
 
   const names = Array.from(selectedOperators);
@@ -2055,7 +2093,9 @@ function applyOperatorSelection() {
 
   const formatted = names.join(", ");
   opInput.value = formatted;
-  onOperatorNameInput();
+  if (targetId === "formOperatorName") {
+    onOperatorNameInput();
+  }
   closeOperatorSelectModal();
 }
 
@@ -2215,6 +2255,203 @@ function initDescSpeechRecognition() {}
 function stopDescRecording() {
   const statusDiv = document.getElementById("descRecordingStatus");
   if (statusDiv) statusDiv.classList.add("hidden");
+}
+
+// ----------------- YARDIMCI GÜVENLİK METODLARI -----------------
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// ================= VARDİYA İŞ AKTARIM FORMU (FR-PE-0658) =================
+
+async function loadHandoverTasks() {
+  const dateInput = document.getElementById("handoverDateFilter");
+  if (!dateInput) return;
+  let dateStr = dateInput.value;
+  if (!dateStr) {
+    const today = new Date().toISOString().split("T")[0];
+    dateInput.value = today;
+    dateStr = today;
+  }
+
+  try {
+    const res = await fetch(`/api/handover/tasks?date_str=${encodeURIComponent(dateStr)}`);
+    if (!res.ok) throw new Error("İş aktarım görevleri yüklenemedi");
+    const tasks = await res.json();
+
+    // Vardiyalara göre grupla
+    const s1 = []; // 08:00 - 16:00
+    const s2 = []; // 16:00 - 24:00
+    const s3 = []; // 24:00 - 08:00
+
+    tasks.forEach(t => {
+      const s = (t.shift || "").replace(/ /g, "").replace(/:/g, ".");
+      if (s.includes("08") && s.includes("16")) {
+        s1.push(t);
+      } else if (s.includes("16") && s.includes("24")) {
+        s2.push(t);
+      } else {
+        s3.push(t);
+      }
+    });
+
+    renderHandoverShiftList("list-handover-s1", "badge-handover-s1", s1, "08:00 - 16:00");
+    renderHandoverShiftList("list-handover-s2", "badge-handover-s2", s2, "16:00 - 24:00");
+    renderHandoverShiftList("list-handover-s3", "badge-handover-s3", s3, "24:00 - 08:00");
+
+    if (window.lucide) lucide.createIcons();
+  } catch (err) {
+    console.error("loadHandoverTasks error:", err);
+  }
+}
+
+function renderHandoverShiftList(containerId, badgeId, tasks, shiftName) {
+  const container = document.getElementById(containerId);
+  const badge = document.getElementById(badgeId);
+  if (badge) {
+    badge.innerText = `${tasks.length} İş`;
+  }
+  if (!container) return;
+
+  if (tasks.length === 0) {
+    container.innerHTML = `<div class="text-center py-8 text-xs text-slate-400">Bu vardiyada kayıt bulunmuyor.</div>`;
+    return;
+  }
+
+  const getStatusBadge = (st) => {
+    switch (st) {
+      case "Tamamlandı":
+        return `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold border border-emerald-200">✅ Tamamlandı</span>`;
+      case "Malzeme Bekleniyor":
+        return `<span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold border border-amber-200">📦 Malzeme Bekleniyor</span>`;
+      case "Sonraki Vardiyaya Devir":
+        return `<span class="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md text-[10px] font-bold border border-purple-200">🔄 Sonraki Vardiyaya Devir</span>`;
+      case "İptal":
+        return `<span class="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-md text-[10px] font-bold border border-rose-200">❌ İptal</span>`;
+      default:
+        return `<span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md text-[10px] font-bold border border-blue-200">⏳ Devam Ediyor</span>`;
+    }
+  };
+
+  container.innerHTML = tasks.map(t => `
+    <div class="bg-slate-50 hover:bg-slate-100/80 p-3 rounded-xl border border-slate-200/70 transition space-y-2">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex-1">
+          <p class="text-xs font-semibold text-slate-800 leading-snug">${escapeHtml(t.task_description)}</p>
+          ${t.notes ? `<p class="text-[11px] text-slate-500 mt-1 italic"><i data-lucide="info" class="w-3 h-3 inline mr-1 text-slate-400"></i>${escapeHtml(t.notes)}</p>` : ''}
+        </div>
+        <button type="button" onclick="deleteHandoverTask(${t.id})" class="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition" title="Görevi Sil">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/50">
+        <div class="flex items-center gap-1.5 text-[11px] text-slate-600 font-medium">
+          <i data-lucide="user" class="w-3.5 h-3.5 text-slate-400"></i>
+          <span>${escapeHtml(t.assigned_person)}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          ${getStatusBadge(t.status)}
+          <select onchange="updateHandoverStatus(${t.id}, this.value)" class="text-[10px] font-semibold bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-600 focus:outline-none">
+            <option value="Devam Ediyor" ${t.status === 'Devam Ediyor' ? 'selected' : ''}>Devam Ediyor</option>
+            <option value="Tamamlandı" ${t.status === 'Tamamlandı' ? 'selected' : ''}>Tamamlandı</option>
+            <option value="Malzeme Bekleniyor" ${t.status === 'Malzeme Bekleniyor' ? 'selected' : ''}>Malzeme Bekleniyor</option>
+            <option value="Sonraki Vardiyaya Devir" ${t.status === 'Sonraki Vardiyaya Devir' ? 'selected' : ''}>Sonraki Vardiyaya Devir</option>
+            <option value="İptal" ${t.status === 'İptal' ? 'selected' : ''}>İptal</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function handleHandoverSubmit(e) {
+  e.preventDefault();
+  const dateStr = document.getElementById("handoverDateFilter")?.value || new Date().toISOString().split("T")[0];
+  const shift = document.getElementById("handoverShift")?.value;
+  const person = document.getElementById("handoverPerson")?.value?.trim();
+  const status = document.getElementById("handoverStatus")?.value;
+  const taskDesc = document.getElementById("handoverTaskDesc")?.value?.trim();
+  const notes = document.getElementById("handoverNotes")?.value?.trim() || null;
+
+  if (!taskDesc || !person) {
+    alert("Lütfen yapılacak işi ve sorumlu kişiyi doldurun.");
+    return;
+  }
+
+  const btn = document.getElementById("btnSubmitHandover");
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/handover/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date_str: dateStr,
+        shift: shift,
+        assigned_person: person,
+        status: status,
+        task_description: taskDesc,
+        notes: notes
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Kayıt eklenemedi");
+    }
+
+    document.getElementById("handoverTaskDesc").value = "";
+    document.getElementById("handoverNotes").value = "";
+
+    await loadHandoverTasks();
+    if (window.showToast) {
+      showToast("İş aktarımı başarıyla kaydedildi!", "success");
+    } else {
+      alert("İş aktarımı başarıyla kaydedildi!");
+    }
+  } catch (err) {
+    alert("Hata: " + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function updateHandoverStatus(taskId, newStatus) {
+  try {
+    const res = await fetch(`/api/handover/${taskId}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus })
+    });
+    if (!res.ok) throw new Error("Durum güncellenemedi");
+    await loadHandoverTasks();
+  } catch (err) {
+    alert("Hata: " + err.message);
+  }
+}
+
+async function deleteHandoverTask(taskId) {
+  if (!confirm("Bu iş aktarım kaydını silmek istediğinize emin misiniz?")) return;
+  try {
+    const res = await fetch(`/api/handover/${taskId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Görev silinemedi");
+    await loadHandoverTasks();
+  } catch (err) {
+    alert("Hata: " + err.message);
+  }
+}
+
+function downloadHandoverExcel() {
+  const dateInput = document.getElementById("handoverDateFilter");
+  const dateStr = dateInput?.value || new Date().toISOString().split("T")[0];
+  window.location.href = `/api/handover/export?date_str=${encodeURIComponent(dateStr)}`;
 }
 
 // ESC tuşu ile açık tüm modalları kapatma

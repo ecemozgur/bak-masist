@@ -154,25 +154,60 @@ class ExcelService:
                 except Exception:
                     pass
 
-                # Önceki günün verilerini temizle (sütun C ve D kapsayan birleşik hücreler)
-                all_ranges = [m for m in ws.merged_cells.ranges if m.min_col <= 3 <= m.max_col]
-                for m in all_ranges:
-                    r = m.min_row
-                    # Başlık satırlarını atla
-                    if r < 5 or r in [38, 39, 40, 41, 42]:
-                        continue
-                    try:
-                        ws.cell(r, 3).value = None   # Bölge
-                        ws.cell(r, 4).value = None   # İşlem
-                        ws.cell(r, 24).value = None  # Kriter No
-                        ws.cell(r, 25).value = None  # Harcanan Süre
-                        ws.cell(r, 26).value = None  # İşi Yapan
-                    except Exception:
-                        pass
+                # Önceki günün verilerini temizle (sütun C (3) ile Z (26) arasındaki tüm veri satırları)
+                data_row_ranges = [range(5, 38), range(43, max(ws.max_row + 1, 76))]
+                for r_range in data_row_ranges:
+                    for r in r_range:
+                        if r in range(38, 43):
+                            continue
+                        for col in range(3, 27):
+                            try:
+                                cell = ws.cell(r, col)
+                                if cell.value is not None and not str(cell.value).startswith("="):
+                                    cell.value = None
+                            except Exception:
+                                pass
+
+        # Kullanıcı talebi: Günlük raporda Chart1, Chart2 ve İŞ AKTARIM FORMU sayfaları yer almasın
+        cls._remove_unwanted_sheets(wb)
 
         wb.save(str(target_path))
         wb.close()
         return target_path
+
+    @classmethod
+    def _remove_unwanted_sheets(cls, wb: openpyxl.Workbook) -> None:
+        """Kullanıcı talebi doğrultusunda günlük rapordan Chart1, Chart2 ve İŞ AKTARIM FORMU sayfalarını temizler."""
+        for sheetname in list(wb.sheetnames):
+            u = sheetname.upper()
+            if "CHART" in u or "AKTARIM" in u:
+                try:
+                    wb.remove(wb[sheetname])
+                except Exception:
+                    pass
+
+    @classmethod
+    def clean_daily_file_sheets(cls, file_path: Path) -> None:
+        """Dosyadaki Chart ve İş Aktarım sayfalarını kaldırır ve günceller."""
+        try:
+            p = Path(file_path)
+            if not p.exists():
+                return
+            wb = openpyxl.load_workbook(str(p))
+            modified = False
+            for sheetname in list(wb.sheetnames):
+                u = sheetname.upper()
+                if "CHART" in u or "AKTARIM" in u:
+                    try:
+                        wb.remove(wb[sheetname])
+                        modified = True
+                    except Exception:
+                        pass
+            if modified:
+                wb.save(str(p))
+            wb.close()
+        except Exception as e:
+            logger.warning(f"clean_daily_file_sheets uyarı: {e}")
 
     @classmethod
     def _find_sheet(cls, wb: openpyxl.Workbook, shift_str: str) -> Any:
@@ -382,3 +417,98 @@ class ExcelService:
         file_path = EXPORTS_DIR / filename
         wb.save(str(file_path))
         return str(file_path)
+
+    @classmethod
+    def export_handover_excel(cls, date_str: str, tasks: list) -> Path:
+        """
+        Vardiya İş Aktarım Formu (Doküman no: FR-PE-0658) için resmi formatta Excel çıktısı üretir.
+        """
+        template_candidates = [
+            Path("app/templates_excel/FR-PE-0658_SABLON.xlsx"),
+            SERVER_EXCEL_BASE_DIR / "FR-PE-0658_1 VARDİYA İŞ AKTARIM FORMU.xlsx"
+        ]
+        template_path = None
+        for cand in template_candidates:
+            if cand.exists():
+                template_path = cand
+                break
+
+        if not template_path:
+            raise FileNotFoundError("FR-PE-0658 İş Aktarım Formu şablonu bulunamadı.")
+
+        wb = openpyxl.load_workbook(str(template_path))
+        ws = wb.active
+
+        # Tarih formatlaması
+        clean_date = date_str
+        try:
+            if "-" in date_str:
+                parts = date_str.split("-")
+                clean_date = f"{parts[2]}.{parts[1]}.{parts[0]}"
+        except Exception:
+            clean_date = date_str
+
+        slot_rows = [6, 9, 12, 15, 18, 21, 24, 27, 30]
+
+        # Şablondaki eski veri satırlarını temizle (slot hücreleri)
+        for r in slot_rows:
+            for c in range(1, 12):
+                try:
+                    cell = ws.cell(r, c)
+                    if cell.__class__.__name__ != "MergedCell":
+                        if cell.value is not None and not str(cell.value).startswith("="):
+                            cell.value = None
+                except Exception:
+                    pass
+
+        # Tarih hücrelerini yaz (A6 ve H6)
+        try:
+            ws.cell(6, 1).value = clean_date
+            ws.cell(6, 8).value = clean_date
+        except Exception:
+            pass
+
+        # Görevleri vardiyalara göre grupla
+        s1 = []  # 08:00-16:00
+        s2 = []  # 16:00-24:00
+        s3 = []  # 24:00-08:00
+
+        for t in tasks:
+            shift_text = (getattr(t, "shift", "") or "").replace(" ", "").replace(":", ".")
+            if "08" in shift_text and "16" in shift_text:
+                s1.append(t)
+            elif "16" in shift_text and "24" in shift_text:
+                s2.append(t)
+            else:
+                s3.append(t)
+
+        for i, t in enumerate(s1):
+            if i >= len(slot_rows):
+                break
+            r = slot_rows[i]
+            ws.cell(r, 2).value = getattr(t, "task_description", "")
+            ws.cell(r, 3).value = getattr(t, "assigned_person", "")
+            ws.cell(r, 4).value = getattr(t, "status", "Devam Ediyor")
+
+        for i, t in enumerate(s2):
+            if i >= len(slot_rows):
+                break
+            r = slot_rows[i]
+            ws.cell(r, 5).value = getattr(t, "task_description", "")
+            ws.cell(r, 6).value = getattr(t, "assigned_person", "")
+            ws.cell(r, 7).value = getattr(t, "status", "Devam Ediyor")
+
+        for i, t in enumerate(s3):
+            if i >= len(slot_rows):
+                break
+            r = slot_rows[i]
+            ws.cell(r, 9).value = getattr(t, "task_description", "")
+            ws.cell(r, 10).value = getattr(t, "assigned_person", "")
+            ws.cell(r, 11).value = getattr(t, "status", "Devam Ediyor")
+
+        export_filename = f"FR-PE-0658_IS_AKTARIM_FORMU_{clean_date}.xlsx"
+        out_path = EXPORTS_DIR / export_filename
+        wb.save(str(out_path))
+        wb.close()
+        return out_path
+

@@ -14,14 +14,15 @@ from app.config import (
     DORUK_ENABLED, SESSION_COOKIE_NAME, SESSION_TTL_DAYS
 )
 from app.database import get_db, engine, Base
-from app.models import User, Machine, MaintenanceLog, ChatMessage, DorukSyncLog
+from app.models import User, Machine, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask
 from app.schemas import (
     UserLogin, UserCreate, UserUpdate, UserResponse, MachineResponse, MachineCreate,
     MaintenanceLogCreate, MaintenanceLogResponse,
     VoiceParseRequest, VoiceParseResponse,
     ChatQueryRequest, ChatQueryResponse, DorukPullRequest,
     ServerExcelAppendRequest, ServerExcelAppendResponse, ServerExcelStatusResponse,
-    DorukAppendRequest, DorukAppendResponse, DorukRowsResponse
+    DorukAppendRequest, DorukAppendResponse, DorukRowsResponse,
+    HandoverTaskCreate, HandoverTaskUpdateStatus, HandoverTaskResponse
 )
 from app.services.init_db import init_database
 from app.services.voice_service import VoiceService
@@ -564,7 +565,94 @@ def download_today_server_excel(
     file_path = Path(status["file_path"])
     if not file_path.exists():
         file_path = ExcelService.ensure_daily_excel_file(dt)
+    else:
+        # İndirilen günlük rapordan Chart ve İş Aktarım Formu sayfalarını temizle
+        ExcelService.clean_daily_file_sheets(file_path)
     
+    return FileResponse(
+        str(file_path),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=file_path.name
+    )
+
+# ================= VARDİYA İŞ AKTARIM FORMU (FR-PE-0658) API =================
+
+@app.get("/api/handover/tasks", response_model=List[HandoverTaskResponse])
+def get_handover_tasks(
+    date_str: Optional[str] = None,
+    shift: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user)
+):
+    """Belirtilen gün veya vardiyadaki iş aktarım görevlerini getirir."""
+    q = db.query(HandoverTask)
+    if date_str:
+        q = q.filter(HandoverTask.date_str == date_str)
+    if shift:
+        q = q.filter(HandoverTask.shift == shift)
+    return q.order_by(HandoverTask.id.desc()).all()
+
+@app.post("/api/handover/add", response_model=HandoverTaskResponse)
+def add_handover_task(
+    data: HandoverTaskCreate,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user)
+):
+    """Yeni iş aktarım görevi ekler."""
+    task = HandoverTask(
+        date_str=data.date_str,
+        shift=data.shift,
+        task_description=data.task_description.strip(),
+        assigned_person=data.assigned_person.strip().upper(),
+        status=data.status or "Devam Ediyor",
+        notes=data.notes.strip() if data.notes else None
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+@app.put("/api/handover/{task_id}/status", response_model=HandoverTaskResponse)
+def update_handover_status(
+    task_id: int,
+    data: HandoverTaskUpdateStatus,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user)
+):
+    """İş aktarım görevinin son durumunu günceller."""
+    task = db.query(HandoverTask).filter(HandoverTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="İş aktarım görevi bulunamadı.")
+    task.status = data.status
+    db.commit()
+    db.refresh(task)
+    return task
+
+@app.delete("/api/handover/{task_id}")
+def delete_handover_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user)
+):
+    """İş aktarım görevini siler."""
+    task = db.query(HandoverTask).filter(HandoverTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="İş aktarım görevi bulunamadı.")
+    db.delete(task)
+    db.commit()
+    return {"success": True, "message": "Görev başarıyla silindi."}
+
+@app.get("/api/handover/export")
+def export_handover_excel_file(
+    date_str: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user)
+):
+    """Vardiya İş Aktarım Formunu (FR-PE-0658) Excel olarak indirir."""
+    if not date_str:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    tasks = db.query(HandoverTask).filter(HandoverTask.date_str == date_str).order_by(HandoverTask.id.asc()).all()
+    file_path = ExcelService.export_handover_excel(date_str, tasks)
     return FileResponse(
         str(file_path),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

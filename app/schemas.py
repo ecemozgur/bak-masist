@@ -222,3 +222,28 @@ class ChatQueryResponse(BaseModel):
     answer: str
     machine_code: Optional[str] = None
     referenced_logs: List[dict] = []
+
+class HandoverTaskCreate(BaseModel):
+    date_str: str
+    shift: str
+    task_description: str
+    assigned_person: str
+    status: Optional[str] = "Devam Ediyor"
+    notes: Optional[str] = None
+
+class HandoverTaskUpdateStatus(BaseModel):
+    status: str
+
+class HandoverTaskResponse(BaseModel):
+    id: int
+    date_str: str
+    shift: str
+    task_description: str
+    assigned_person: str
+    status: str
+    notes: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+

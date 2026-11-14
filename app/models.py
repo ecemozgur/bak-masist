@@ -110,3 +110,16 @@ class PeriodicCheck(Base):
 
     machine = relationship("Machine", backref="periodic_checks")
     user = relationship("User", backref="periodic_checks")
+
+class HandoverTask(Base):
+    __tablename__ = "handover_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date_str = Column(String(20), nullable=False)  # YYYY-MM-DD
+    shift = Column(String(30), nullable=False)     # 08:00-16:00, 16:00-24:00, 24:00-08:00
+    task_description = Column(Text, nullable=False) # Yapılacak / Devredilen İş
+    assigned_person = Column(String(100), nullable=False) # Sorumlu Kişi / Operatör
+    status = Column(String(50), default="Devam Ediyor")   # Devam Ediyor, Tamamlandı, Malzeme Bekleniyor, Sonraki Vardiyaya Devir
+    notes = Column(Text, nullable=True)             # Ek Notlar
+    created_at = Column(DateTime, default=datetime.utcnow)
+

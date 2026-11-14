@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from app.database import engine, Base, SessionLocal
-from app.models import User, Machine, MaintenanceLog
+from app.models import User, Machine, MaintenanceLog, HandoverTask
 from app.services.auth_service import hash_pin, is_pin_hashed
 
 def init_database():
