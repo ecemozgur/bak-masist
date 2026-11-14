@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY seed_layout_machines.py .
 
 EXPOSE 8000
 
