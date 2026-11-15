@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -10,6 +11,9 @@ from openpyxl.utils import get_column_letter
 
 from app.config import EXPORTS_DIR, SERVER_EXCEL_BASE_DIR, EXCEL_TEMPLATE_PATH
 from app.models import MaintenanceLog
+from app.services.s3_service import S3Service
+
+_excel_lock = threading.RLock()
 
 TURKISH_MONTHS = {
     1: '01-OCAK', 2: '02-ŞUBAT', 3: '03-MART', 4: '04-NİSAN',
@@ -80,108 +84,126 @@ class ExcelService:
         return month_dir / cls.get_daily_filename(dt)
 
     @classmethod
+    def get_s3_key(cls, dt: datetime = None) -> str:
+        if not dt:
+            dt = datetime.now()
+        return S3Service.build_key(cls.get_month_folder(dt).name, cls.get_daily_filename(dt))
+
+    @classmethod
     def ensure_daily_excel_file(cls, dt: datetime = None) -> Path:
         """
-        Bugünün Excel dosyası yoksa, önceki günden veya şablondan
+        Bugünün Excel dosyası yoksa, S3'ten indirir veya önceki günden/şablondan
         tüm başlıklar, formüller ve kriterler korunarak temiz bir günlük dosya oluşturur.
         """
         if not dt:
             dt = datetime.now()
-        
-        target_path = cls.get_daily_excel_path(dt)
-        if target_path.exists():
-            return target_path
 
-        month_dir = cls.get_month_folder(dt)
-        day_str = f"{dt.day:02d}.{dt.month:02d}.{dt.year} {TURKISH_DAYS.get(dt.weekday(), '')}"
+        with _excel_lock:
+            target_path = cls.get_daily_excel_path(dt)
+            s3_enabled = S3Service.is_enabled()
+            s3_key = cls.get_s3_key(dt) if s3_enabled else None
 
-        # Şablon olarak kullanılabilecek mevcut bir dosya bul
-        candidate_files = sorted(
-            [f for f in month_dir.glob("*.xlsx") if not f.name.startswith("~$")],
-            key=lambda f: f.stat().st_mtime,
-            reverse=True
-        )
+            if s3_enabled:
+                if S3Service.download_file(s3_key, target_path):
+                    return target_path
+            elif target_path.exists():
+                return target_path
 
-        template_src = None
-        if candidate_files:
-            template_src = candidate_files[0]
-        else:
-            # Üst klasördeki FR-PE-0658 veya önceki aylardan ara
-            for prev_month in SERVER_EXCEL_BASE_DIR.glob("*"):
-                if prev_month.is_dir():
-                    prev_files = sorted(
-                        [f for f in prev_month.glob("*.xlsx") if not f.name.startswith("~$")],
-                        key=lambda f: f.stat().st_mtime,
-                        reverse=True
-                    )
-                    if prev_files:
-                        template_src = prev_files[0]
-                        break
+            if not target_path.exists():
+                month_dir = cls.get_month_folder(dt)
+                day_str = f"{dt.day:02d}.{dt.month:02d}.{dt.year} {TURKISH_DAYS.get(dt.weekday(), '')}"
 
-        if not template_src or not template_src.exists():
-            if EXCEL_TEMPLATE_PATH.exists():
-                template_src = EXCEL_TEMPLATE_PATH
+                # Şablon olarak kullanılabilecek mevcut bir dosya bul
+                candidate_files = sorted(
+                    [f for f in month_dir.glob("*.xlsx") if not f.name.startswith("~$")],
+                    key=lambda f: f.stat().st_mtime,
+                    reverse=True
+                )
 
-        if not template_src or not template_src.exists():
-            raise FileNotFoundError(f"Şablon olarak kullanılabilecek bir Excel dosyası bulunamadı: {month_dir}")
+                template_src = None
+                if candidate_files:
+                    template_src = candidate_files[0]
+                else:
+                    # Üst klasördeki FR-PE-0658 veya önceki aylardan ara
+                    for prev_month in SERVER_EXCEL_BASE_DIR.glob("*"):
+                        if prev_month.is_dir():
+                            prev_files = sorted(
+                                [f for f in prev_month.glob("*.xlsx") if not f.name.startswith("~$")],
+                                key=lambda f: f.stat().st_mtime,
+                                reverse=True
+                            )
+                            if prev_files:
+                                template_src = prev_files[0]
+                                break
 
-        # Şablonu bugünün dosyası olarak kopyala
-        shutil.copy2(str(template_src), str(target_path))
+                if not template_src or not template_src.exists():
+                    if EXCEL_TEMPLATE_PATH.exists():
+                        template_src = EXCEL_TEMPLATE_PATH
 
-        # Yeni günün dosyasını açıp tarihleri güncelle ve veri satırlarını temizle
-        wb = openpyxl.load_workbook(str(target_path))
-        for unwanted in ("İŞ AKTARIM FORMU", "Chart1", "Chart2"):
-            if unwanted in wb.sheetnames:
-                wb.remove(wb[unwanted])
-        shift_sheet_keywords = ["08.00-16.00", "16.00-24.00", "24.00 - 08.00", "PAZAR"]
+                if not template_src or not template_src.exists():
+                    raise FileNotFoundError(f"Şablon olarak kullanılabilecek bir Excel dosyası bulunamadı: {month_dir}")
 
-        for sheetname in wb.sheetnames:
-            clean_name = sheetname.strip()
-            if any(k in clean_name for k in shift_sheet_keywords):
-                ws = wb[sheetname]
-                if not hasattr(ws, 'cell'):
-                    continue
+                # Şablonu bugünün dosyası olarak kopyala
+                shutil.copy2(str(template_src), str(target_path))
 
-                # Tarih hücresini güncelle (A5 ve varsa sayfa 2'de A43)
-                try:
-                    ws.cell(5, 1).value = day_str
-                except Exception:
-                    pass
-                try:
-                    if ws.max_row >= 43 and ws.cell(43, 1).value:
-                        ws.cell(43, 1).value = day_str
-                except Exception:
-                    pass
+                # Yeni günün dosyasını açıp tarihleri güncelle ve veri satırlarını temizle
+                wb = openpyxl.load_workbook(str(target_path))
+                for unwanted in ("İŞ AKTARIM FORMU", "Chart1", "Chart2"):
+                    if unwanted in wb.sheetnames:
+                        wb.remove(wb[unwanted])
+                shift_sheet_keywords = ["08.00-16.00", "16.00-24.00", "24.00 - 08.00", "PAZAR"]
 
-                # Başlıktaki 'BÖLGE' ibaresini 'HAT NO / MAKİNE' olarak güncelle
-                try:
-                    if ws.cell(4, 3).value and "BÖLGE" in str(ws.cell(4, 3).value).upper():
-                        ws.cell(4, 3).value = "HAT NO / MAKİNE"
-                    if ws.max_row >= 42 and ws.cell(42, 3).value and "BÖLGE" in str(ws.cell(42, 3).value).upper():
-                        ws.cell(42, 3).value = "HAT NO / MAKİNE"
-                except Exception:
-                    pass
-
-                # Önceki günün verilerini temizle (sütun C (3) ile Z (26) arasındaki tüm veri satırları)
-                data_row_ranges = [range(5, 38), range(43, max(ws.max_row + 1, 76))]
-                for r_range in data_row_ranges:
-                    for r in r_range:
-                        if r in range(38, 43):
+                for sheetname in wb.sheetnames:
+                    clean_name = sheetname.strip()
+                    if any(k in clean_name for k in shift_sheet_keywords):
+                        ws = wb[sheetname]
+                        if not hasattr(ws, 'cell'):
                             continue
-                        for col in range(3, 27):
-                            try:
-                                cell = ws.cell(r, col)
-                                if cell.value is not None and not str(cell.value).startswith("="):
-                                    cell.value = None
-                            except Exception:
-                                pass
 
-        # Kullanıcı talebi: Günlük raporda Chart1, Chart2 ve İŞ AKTARIM FORMU sayfaları yer almasın
-        cls._remove_unwanted_sheets(wb)
+                        # Tarih hücresini güncelle (A5 ve varsa sayfa 2'de A43)
+                        try:
+                            ws.cell(5, 1).value = day_str
+                        except Exception:
+                            pass
+                        try:
+                            if ws.max_row >= 43 and ws.cell(43, 1).value:
+                                ws.cell(43, 1).value = day_str
+                        except Exception:
+                            pass
 
-        wb.save(str(target_path))
-        wb.close()
-        return target_path
+                        # Başlıktaki 'BÖLGE' ibaresini 'HAT NO / MAKİNE' olarak güncelle
+                        try:
+                            if ws.cell(4, 3).value and "BÖLGE" in str(ws.cell(4, 3).value).upper():
+                                ws.cell(4, 3).value = "HAT NO / MAKİNE"
+                            if ws.max_row >= 42 and ws.cell(42, 3).value and "BÖLGE" in str(ws.cell(42, 3).value).upper():
+                                ws.cell(42, 3).value = "HAT NO / MAKİNE"
+                        except Exception:
+                            pass
+
+                        # Önceki günün verilerini temizle (sütun C (3) ile Z (26) arasındaki tüm veri satırları)
+                        data_row_ranges = [range(5, 38), range(43, max(ws.max_row + 1, 76))]
+                        for r_range in data_row_ranges:
+                            for r in r_range:
+                                if r in range(38, 43):
+                                    continue
+                                for col in range(3, 27):
+                                    try:
+                                        cell = ws.cell(r, col)
+                                        if cell.value is not None and not str(cell.value).startswith("="):
+                                            cell.value = None
+                                    except Exception:
+                                        pass
+
+                # Kullanıcı talebi: Günlük raporda Chart1, Chart2 ve İŞ AKTARIM FORMU sayfaları yer almasın
+                cls._remove_unwanted_sheets(wb)
+
+                wb.save(str(target_path))
+                wb.close()
+
+            if s3_enabled and s3_key:
+                S3Service.upload_file(target_path, s3_key)
+
+            return target_path
 
     @classmethod
     def _remove_unwanted_sheets(cls, wb: openpyxl.Workbook) -> None:
@@ -255,71 +277,75 @@ class ExcelService:
         if not dt:
             dt = datetime.now()
 
-        file_path = cls.ensure_daily_excel_file(dt)
-        wb = openpyxl.load_workbook(str(file_path))
+        with _excel_lock:
+            file_path = cls.ensure_daily_excel_file(dt)
+            wb = openpyxl.load_workbook(str(file_path))
 
-        ws = cls._find_sheet(wb, shift or "08.00-16.00")
+            ws = cls._find_sheet(wb, shift or "08.00-16.00")
 
-        # C sütununu kapsayan birleşik hücre aralıklarını tara ve ilk boş slotu bul
-        c_ranges = sorted(
-            [m for m in ws.merged_cells.ranges if m.min_col <= 3 <= m.max_col and m.min_row >= 5 and m.min_row not in [38, 39, 40, 41, 42]],
-            key=lambda m: m.min_row
-        )
+            # C sütununu kapsayan birleşik hücre aralıklarını tara ve ilk boş slotu bul
+            c_ranges = sorted(
+                [m for m in ws.merged_cells.ranges if m.min_col <= 3 <= m.max_col and m.min_row >= 5 and m.min_row not in [38, 39, 40, 41, 42]],
+                key=lambda m: m.min_row
+            )
 
-        target_row = None
-        for m in c_ranges:
-            r = m.min_row
-            val_c = ws.cell(r, 3).value
-            val_d = ws.cell(r, 4).value
-            if (val_c is None or str(val_c).strip() == "") and (val_d is None or str(val_d).strip() == ""):
-                target_row = r
-                break
+            target_row = None
+            for m in c_ranges:
+                r = m.min_row
+                val_c = ws.cell(r, 3).value
+                val_d = ws.cell(r, 4).value
+                if (val_c is None or str(val_c).strip() == "") and (val_d is None or str(val_d).strip() == ""):
+                    target_row = r
+                    break
 
-        # Eğer hazır boş slot kalmadıysa, sayfanın sonuna yeni bir çift satır ekle
-        if target_row is None:
-            max_r = ws.max_row + 1
-            if max_r % 2 == 0:
-                max_r += 1
-            target_row = max_r
-            # Birleştirmeleri yap
-            ws.merge_cells(start_row=target_row, start_column=3, end_row=target_row+1, end_column=3)
-            ws.merge_cells(start_row=target_row, start_column=4, end_row=target_row+1, end_column=23)
-            ws.merge_cells(start_row=target_row, start_column=24, end_row=target_row+1, end_column=24)
-            ws.merge_cells(start_row=target_row, start_column=25, end_row=target_row+1, end_column=25)
-            ws.merge_cells(start_row=target_row, start_column=26, end_row=target_row+1, end_column=26)
+            # Eğer hazır boş slot kalmadıysa, sayfanın sonuna yeni bir çift satır ekle
+            if target_row is None:
+                max_r = ws.max_row + 1
+                if max_r % 2 == 0:
+                    max_r += 1
+                target_row = max_r
+                # Birleştirmeleri yap
+                ws.merge_cells(start_row=target_row, start_column=3, end_row=target_row+1, end_column=3)
+                ws.merge_cells(start_row=target_row, start_column=4, end_row=target_row+1, end_column=23)
+                ws.merge_cells(start_row=target_row, start_column=24, end_row=target_row+1, end_column=24)
+                ws.merge_cells(start_row=target_row, start_column=25, end_row=target_row+1, end_column=25)
+                ws.merge_cells(start_row=target_row, start_column=26, end_row=target_row+1, end_column=26)
 
-        # Başlıktaki 'BÖLGE' ibaresini 'HAT NO / MAKİNE' olarak güncelle
-        try:
-            if ws.cell(4, 3).value and "BÖLGE" in str(ws.cell(4, 3).value).upper():
-                ws.cell(4, 3).value = "HAT NO / MAKİNE"
-            if ws.max_row >= 42 and ws.cell(42, 3).value and "BÖLGE" in str(ws.cell(42, 3).value).upper():
-                ws.cell(42, 3).value = "HAT NO / MAKİNE"
-        except Exception:
-            pass
+            # Başlıktaki 'BÖLGE' ibaresini 'HAT NO / MAKİNE' olarak güncelle
+            try:
+                if ws.cell(4, 3).value and "BÖLGE" in str(ws.cell(4, 3).value).upper():
+                    ws.cell(4, 3).value = "HAT NO / MAKİNE"
+                if ws.max_row >= 42 and ws.cell(42, 3).value and "BÖLGE" in str(ws.cell(42, 3).value).upper():
+                    ws.cell(42, 3).value = "HAT NO / MAKİNE"
+            except Exception:
+                pass
 
-        # Açıklama metnine saat damgası ekle
-        timestamp_str = dt.strftime("%H:%M")
-        full_job_desc = f"[{timestamp_str}] {job_description.strip()}" if include_timestamp else job_description.strip()
+            # Açıklama metnine saat damgası ekle
+            timestamp_str = dt.strftime("%H:%M")
+            full_job_desc = f"[{timestamp_str}] {job_description.strip()}" if include_timestamp else job_description.strip()
 
-        # Değerleri yaz
-        ws.cell(target_row, 3).value = area_line.strip().upper()
-        ws.cell(target_row, 4).value = full_job_desc
-        ws.cell(target_row, 24).value = str(criterion_no).strip()
-        ws.cell(target_row, 25).value = int(time_spent_minutes)
-        ws.cell(target_row, 26).value = operator_name.strip().upper()
+            # Değerleri yaz
+            ws.cell(target_row, 3).value = area_line.strip().upper()
+            ws.cell(target_row, 4).value = full_job_desc
+            ws.cell(target_row, 24).value = str(criterion_no).strip()
+            ws.cell(target_row, 25).value = int(time_spent_minutes)
+            ws.cell(target_row, 26).value = operator_name.strip().upper()
 
-        wb.save(str(file_path))
-        wb.close()
+            wb.save(str(file_path))
+            wb.close()
 
-        return {
-            "success": True,
-            "message": f"Kayıt başarıyla server Excel'ine eklendi!",
-            "file_path": str(file_path),
-            "file_name": file_path.name,
-            "sheet_name": ws.title,
-            "row": target_row,
-            "timestamp": dt.strftime("%d.%m.%Y %H:%M")
-        }
+            if S3Service.is_enabled():
+                S3Service.upload_file(file_path, cls.get_s3_key(dt))
+
+            return {
+                "success": True,
+                "message": "Kayıt başarıyla server Excel'ine eklendi!",
+                "file_path": str(file_path),
+                "file_name": file_path.name,
+                "sheet_name": ws.title,
+                "row": target_row,
+                "timestamp": dt.strftime("%d.%m.%Y %H:%M")
+            }
 
     @classmethod
     def get_today_status(cls, dt: datetime = None) -> Dict[str, Any]:
@@ -327,58 +353,62 @@ class ExcelService:
         if not dt:
             dt = datetime.now()
 
-        file_path = cls.get_daily_excel_path(dt)
-        month_folder = cls.get_month_folder(dt).name
-        day_name = TURKISH_DAYS.get(dt.weekday(), "")
-        today_str = f"{dt.day:02d}.{dt.month:02d}.{dt.year} {day_name}"
+        with _excel_lock:
+            file_path = cls.get_daily_excel_path(dt)
+            month_folder = cls.get_month_folder(dt).name
+            day_name = TURKISH_DAYS.get(dt.weekday(), "")
+            today_str = f"{dt.day:02d}.{dt.month:02d}.{dt.year} {day_name}"
 
-        records = []
-        if file_path.exists():
-            try:
-                wb = openpyxl.load_workbook(str(file_path), data_only=True)
-                for sheetname in wb.sheetnames:
-                    if not any(k in sheetname for k in ["08.00", "16.00", "24.00"]):
-                        continue
-                    ws = wb[sheetname]
-                    if not hasattr(ws, 'merged_cells'):
-                        continue
-                    
-                    c_ranges = sorted(
-                        [m for m in ws.merged_cells.ranges if m.min_col <= 3 <= m.max_col and m.min_row >= 5 and m.min_row not in [38, 39, 40, 41, 42]],
-                        key=lambda m: m.min_row
-                    )
-                    for m in c_ranges:
-                        r = m.min_row
-                        area = ws.cell(r, 3).value
-                        desc = ws.cell(r, 4).value
-                        crit = ws.cell(r, 24).value
-                        dur = ws.cell(r, 25).value
-                        worker = ws.cell(r, 26).value
-                        if area or desc:
-                            match = re.search(r"\[(\d{1,2}):(\d{2})\]", str(desc or ""))
-                            time_str = f"{int(match.group(1)):02d}:{int(match.group(2)):02d}" if match else None
-                            records.append({
-                                "sheet": sheetname.strip(),
-                                "row": r,
-                                "area": str(area or "-"),
-                                "description": str(desc or "-"),
-                                "criterion_no": str(crit or "-"),
-                                "time_spent": dur or 0,
-                                "operator": str(worker or "-"),
-                                "time_str": time_str
-                            })
-                wb.close()
-            except Exception as e:
-                pass
+            if S3Service.is_enabled():
+                S3Service.download_file(cls.get_s3_key(dt), file_path)
 
-        return {
-            "file_path": str(file_path),
-            "file_name": file_path.name,
-            "file_exists": file_path.exists(),
-            "month_folder": month_folder,
-            "today_date_str": today_str,
-            "records": records
-        }
+            records = []
+            if file_path.exists():
+                try:
+                    wb = openpyxl.load_workbook(str(file_path), data_only=True)
+                    for sheetname in wb.sheetnames:
+                        if not any(k in sheetname for k in ["08.00", "16.00", "24.00"]):
+                            continue
+                        ws = wb[sheetname]
+                        if not hasattr(ws, 'merged_cells'):
+                            continue
+                        
+                        c_ranges = sorted(
+                            [m for m in ws.merged_cells.ranges if m.min_col <= 3 <= m.max_col and m.min_row >= 5 and m.min_row not in [38, 39, 40, 41, 42]],
+                            key=lambda m: m.min_row
+                        )
+                        for m in c_ranges:
+                            r = m.min_row
+                            area = ws.cell(r, 3).value
+                            desc = ws.cell(r, 4).value
+                            crit = ws.cell(r, 24).value
+                            dur = ws.cell(r, 25).value
+                            worker = ws.cell(r, 26).value
+                            if area or desc:
+                                match = re.search(r"\[(\d{1,2}):(\d{2})\]", str(desc or ""))
+                                time_str = f"{int(match.group(1)):02d}:{int(match.group(2)):02d}" if match else None
+                                records.append({
+                                    "sheet": sheetname.strip(),
+                                    "row": r,
+                                    "area": str(area or "-"),
+                                    "description": str(desc or "-"),
+                                    "criterion_no": str(crit or "-"),
+                                    "time_spent": dur or 0,
+                                    "operator": str(worker or "-"),
+                                    "time_str": time_str
+                                })
+                    wb.close()
+                except Exception:
+                    pass
+
+            return {
+                "file_path": str(file_path),
+                "file_name": file_path.name,
+                "file_exists": file_path.exists(),
+                "month_folder": month_folder,
+                "today_date_str": today_str,
+                "records": records
+            }
 
     @classmethod
     def export_shift_report(cls, logs: List[MaintenanceLog], report_date: str = None) -> str:

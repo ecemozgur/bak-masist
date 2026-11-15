@@ -563,8 +563,10 @@ async function submitServerExcelLog(event) {
       alert(`✅ BAŞARIYLA KAYDEDİLDİ!\n\n📁 Server Dosyası: ${data.file_name}\n📄 Sayfa: ${data.sheet_name}\n📍 Satır: ${data.row}\n⏰ Saat: ${data.timestamp}\n\nKayıt iş yeri sunucusundaki güncel Excel dosyasına işlendi.`);
       
       // Formu temizle ve yeni satıra hazırla
-      document.getElementById("formJobDescription").value = "";
-      document.getElementById("voiceLiveOutput").innerText = "";
+      const jobDescEl = document.getElementById("formJobDescription");
+      if (jobDescEl) jobDescEl.value = "";
+      const voiceLiveOutEl = document.getElementById("voiceLiveOutput");
+      if (voiceLiveOutEl) voiceLiveOutEl.innerText = "";
       updatePreviewRow();
       
       // Sunucu tablosunu ve kayıtları güncelle

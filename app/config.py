@@ -40,3 +40,12 @@ _default_server_excel_dir = (
 )
 SERVER_EXCEL_BASE_DIR = Path(os.getenv("SERVER_EXCEL_BASE_DIR", _default_server_excel_dir))
 SERVER_EXCEL_BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+# AWS S3 Bulut Depolama Ayarları (Opsiyonel: S3_ENABLED=true olduğunda aktifleşir)
+S3_ENABLED = os.getenv("S3_ENABLED", "false").lower() == "true"
+S3_BUCKET = os.getenv("S3_BUCKET", "").strip()
+AWS_REGION = os.getenv("AWS_REGION", "eu-central-1").strip()
+S3_PREFIX = os.getenv("S3_PREFIX", "server_excel").strip().strip("/")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "").strip() or None
