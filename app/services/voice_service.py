@@ -36,7 +36,8 @@ class VoiceService:
         "23": ("KAYIT(RAPORLAMA)", ["raporlama", "kayıt", "rapor hazırla", "veri girişi"]),
         "24": ("KALIP AYAR", ["kalıp ayar", "kalıp bağlama", "dandori", "kalıp sökme", "kalıp takma"]),
         "25": ("DIŞ GÖREV", ["dış görev", "tedarikçi", "lazere gidildi", "taşeron", "servise gidildi", "dışarı gidildi"]),
-        "26": ("QCC", ["qcc", "kalite çemberi", "kalite kontrol çemberi"])
+        "26": ("5S", ["5s", "beş s", "tertip düzen", "temizlik ve düzen"]),
+        "27": ("QCC", ["qcc", "kalite çemberi", "kalite kontrol çemberi"])
     }
 
     @classmethod

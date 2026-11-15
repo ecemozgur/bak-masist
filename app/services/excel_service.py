@@ -8,7 +8,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from app.config import EXPORTS_DIR, SERVER_EXCEL_BASE_DIR
+from app.config import EXPORTS_DIR, SERVER_EXCEL_BASE_DIR, EXCEL_TEMPLATE_PATH
 from app.models import MaintenanceLog
 
 TURKISH_MONTHS = {
@@ -48,7 +48,8 @@ CRITERIA_CATALOG = [
     {"no": "23", "name": "KAYIT(RAPORLAMA)"},
     {"no": "24", "name": "KALIP AYAR"},
     {"no": "25", "name": "DIŞ GÖREV"},
-    {"no": "26", "name": "QCC"}
+    {"no": "26", "name": "5S"},
+    {"no": "27", "name": "QCC"}
 ]
 
 class ExcelService:
@@ -118,6 +119,10 @@ class ExcelService:
                         break
 
         if not template_src or not template_src.exists():
+            if EXCEL_TEMPLATE_PATH.exists():
+                template_src = EXCEL_TEMPLATE_PATH
+
+        if not template_src or not template_src.exists():
             raise FileNotFoundError(f"Şablon olarak kullanılabilecek bir Excel dosyası bulunamadı: {month_dir}")
 
         # Şablonu bugünün dosyası olarak kopyala
@@ -125,6 +130,9 @@ class ExcelService:
 
         # Yeni günün dosyasını açıp tarihleri güncelle ve veri satırlarını temizle
         wb = openpyxl.load_workbook(str(target_path))
+        for unwanted in ("İŞ AKTARIM FORMU", "Chart1", "Chart2"):
+            if unwanted in wb.sheetnames:
+                wb.remove(wb[unwanted])
         shift_sheet_keywords = ["08.00-16.00", "16.00-24.00", "24.00 - 08.00", "PAZAR"]
 
         for sheetname in wb.sheetnames:

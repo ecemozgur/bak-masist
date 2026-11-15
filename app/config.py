@@ -9,6 +9,7 @@ EXPORTS_DIR = Path(os.getenv(
 ))
 STATIC_DIR = BASE_DIR / "app" / "static"
 TEMPLATES_DIR = BASE_DIR / "app" / "templates"
+EXCEL_TEMPLATE_PATH = TEMPLATES_DIR / "excel" / "FR-PE-0657_template.xlsx"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
