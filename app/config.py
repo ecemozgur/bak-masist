@@ -1,5 +1,13 @@
 import os
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+TR_TZ = timezone(timedelta(hours=3))
+
+
+def now_tr() -> datetime:
+    """Sunucu saat dilimi UTC olsa bile her zaman Türkiye saatini (UTC+3) döner."""
+    return datetime.now(TR_TZ).replace(tzinfo=None)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data")))

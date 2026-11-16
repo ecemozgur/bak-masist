@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.config import now_tr
 
 class User(Base):
     __tablename__ = "users"
@@ -13,7 +14,7 @@ class User(Base):
     department = Column(String(50), default="Mekanik Bakım")  # Mekanik, Elektrik, Otomasyon
     pin_code = Column(String(255), nullable=False, default="1234")  # Hashlenmiş PIN kodu
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_tr)
 
     logs = relationship("MaintenanceLog", back_populates="user")
     chats = relationship("ChatMessage", back_populates="user")
@@ -30,10 +31,23 @@ class Machine(Base):
     serial_no = Column(String(100), nullable=True)
     status = Column(String(20), default="CALISIYOR")  # CALISIYOR, ARIZALI, BAKIMDA
     total_downtime_minutes = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_tr)
 
     logs = relationship("MaintenanceLog", back_populates="machine", cascade="all, delete-orphan")
     chats = relationship("ChatMessage", back_populates="machine")
+    subfolders = relationship("MachineSubfolder", back_populates="machine", cascade="all, delete-orphan")
+
+class MachineSubfolder(Base):
+    __tablename__ = "machine_subfolders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(Integer, ForeignKey("machines.id"), nullable=False, index=True)
+    folder_name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    created_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=now_tr)
+
+    machine = relationship("Machine", back_populates="subfolders")
 
 class MaintenanceLog(Base):
     __tablename__ = "maintenance_logs"
@@ -60,7 +74,7 @@ class MaintenanceLog(Base):
     doruk_sync_time = Column(DateTime, nullable=True)
     
     raw_voice_transcript = Column(Text, nullable=True)   # Bakımcının sesinden dökülen ham metin
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_tr)
 
     machine = relationship("Machine", back_populates="logs")
     user = relationship("User", back_populates="logs")
@@ -74,7 +88,7 @@ class DorukSyncLog(Base):
     status = Column(String(20), default="SUCCESS")  # SUCCESS, FAILED, PENDING
     payload = Column(Text, nullable=True)
     response_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_tr)
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
@@ -85,7 +99,7 @@ class ChatMessage(Base):
     sender = Column(String(20), nullable=False)  # USER, ASSISTANT
     message = Column(Text, nullable=False)
     context_used = Column(Text, nullable=True)   # Chatbotun geçmişten bulup kullandığı arıza referansları
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_tr)
 
     user = relationship("User", back_populates="chats")
     machine = relationship("Machine", back_populates="chats")
@@ -106,7 +120,7 @@ class PeriodicCheck(Base):
     status = Column(String(20), default="UYGUN")        # UYGUN, UYGUN DEĞİL
     items_json = Column(Text, nullable=True)            # JSON list of check results
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_tr)
 
     machine = relationship("Machine", backref="periodic_checks")
     user = relationship("User", backref="periodic_checks")
@@ -121,5 +135,5 @@ class HandoverTask(Base):
     assigned_person = Column(String(100), nullable=False) # Sorumlu Kişi / Operatör
     status = Column(String(50), default="Devam Ediyor")   # Devam Ediyor, Tamamlandı, Malzeme Bekleniyor, Sonraki Vardiyaya Devir
     notes = Column(Text, nullable=True)             # Ek Notlar
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_tr)
 

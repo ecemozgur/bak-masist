@@ -11,12 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.config import (
     STATIC_DIR, TEMPLATES_DIR, EXPORTS_DIR, SERVER_EXCEL_BASE_DIR,
-    DORUK_ENABLED, SESSION_COOKIE_NAME, SESSION_TTL_DAYS
+    DORUK_ENABLED, SESSION_COOKIE_NAME, SESSION_TTL_DAYS, now_tr
 )
 from app.database import get_db, engine, Base
-from app.models import User, Machine, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask
+from app.models import User, Machine, MachineSubfolder, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask
 from app.schemas import (
     UserLogin, UserCreate, UserUpdate, UserResponse, MachineResponse, MachineCreate,
+    MachineSubfolderCreate, MachineSubfolderResponse,
     MaintenanceLogCreate, MaintenanceLogResponse,
     VoiceParseRequest, VoiceParseResponse,
     ChatQueryRequest, ChatQueryResponse, DorukPullRequest,
@@ -32,7 +33,7 @@ from app.services.chatbot_service import ChatbotService
 from app.services.auth_service import (
     hash_pin, verify_pin, is_pin_hashed, validate_password_strength, create_session_token,
     check_rate_limit, record_failed_attempt, clear_failed_attempts,
-    get_current_user, require_admin, is_admin_role
+    get_current_user, require_admin, require_manager_or_admin, is_admin_role
 )
 
 # Veritabanı tablolarını ve ilk verileri hazırla
@@ -155,7 +156,9 @@ def admin_create_user(
         raise HTTPException(status_code=400, detail="Bu sicil numarası zaten kayıtlı!")
 
     role = data.role.upper().strip()
-    if role not in ("TEKNISYEN", "ADMIN"):
+    if role == "YÖNETİCİ":
+        role = "YONETICI"
+    if role not in ("TEKNISYEN", "YONETICI", "ADMIN"):
         role = "TEKNISYEN"
 
     user = User(
@@ -188,7 +191,9 @@ def admin_update_user(
         user.department = data.department.strip()
     if data.role is not None:
         new_role = data.role.upper().strip()
-        if new_role in ("TEKNISYEN", "ADMIN"):
+        if new_role == "YÖNETİCİ":
+            new_role = "YONETICI"
+        if new_role in ("TEKNISYEN", "YONETICI", "ADMIN"):
             if user.id == admin.id and new_role != "ADMIN":
                 raise HTTPException(status_code=400, detail="Kendi yönetici yetkinizi kaldıramazsınız.")
             user.role = new_role
@@ -235,7 +240,7 @@ def get_machines(
 @app.post("/api/machines", response_model=MachineResponse)
 def create_machine(
     data: MachineCreate,
-    _admin: User = Depends(require_admin),
+    _manager: User = Depends(require_manager_or_admin),
     db: Session = Depends(get_db)
 ):
     existing = db.query(Machine).filter(Machine.code == data.code.upper()).first()
@@ -263,7 +268,7 @@ def get_machine_folder(
 ):
     """
     Belirli bir makinenin dijital klasörü:
-    Künyesi, geçmiş arızaları, değişen parçalar, duruş istatistikleri ve Doruk kayıtları.
+    Künyesi, alt klasörleri, geçmiş arızaları, değişen parçalar, duruş istatistikleri ve Doruk kayıtları.
     """
     machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
     if not machine:
@@ -272,6 +277,21 @@ def get_machine_folder(
     logs = db.query(MaintenanceLog).filter(
         MaintenanceLog.machine_id == machine.id
     ).order_by(MaintenanceLog.id.desc()).all()
+
+    subfolders = db.query(MachineSubfolder).filter(
+        MachineSubfolder.machine_id == machine.id
+    ).order_by(MachineSubfolder.id.desc()).all()
+
+    formatted_subfolders = [
+        {
+            "id": sf.id,
+            "folder_name": sf.folder_name,
+            "description": sf.description or "",
+            "created_by": sf.created_by or "-",
+            "created_at": sf.created_at.strftime("%d.%m.%Y %H:%M") if sf.created_at else "-"
+        }
+        for sf in subfolders
+    ]
 
     formatted_logs = []
     for l in logs:
@@ -301,9 +321,57 @@ def get_machine_folder(
             "status": machine.status,
             "total_downtime": machine.total_downtime_minutes
         },
+        "subfolders": formatted_subfolders,
         "total_interventions": len(formatted_logs),
         "history": formatted_logs
     }
+
+@app.post("/api/machines/{machine_code}/subfolders", response_model=MachineSubfolderResponse)
+def create_machine_subfolder(
+    machine_code: str,
+    data: MachineSubfolderCreate,
+    current_user: User = Depends(require_manager_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Yönetici (YONETICI) veya Admin tarafından makine dijital dosyasına yeni klasör ekler."""
+    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    folder_name = (data.folder_name or "").strip()
+    if not folder_name:
+        raise HTTPException(status_code=400, detail="Klasör adı zorunludur.")
+
+    subfolder = MachineSubfolder(
+        machine_id=machine.id,
+        folder_name=folder_name,
+        description=(data.description or "").strip() or None,
+        created_by=current_user.full_name
+    )
+    db.add(subfolder)
+    db.commit()
+    db.refresh(subfolder)
+    return subfolder
+
+@app.delete("/api/machines/{machine_code}/subfolders/{folder_id}")
+def delete_machine_subfolder(
+    machine_code: str,
+    folder_id: int,
+    _manager: User = Depends(require_manager_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Makine dijital dosyasındaki alt klasörü siler."""
+    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    subfolder = db.query(MachineSubfolder).filter(
+        MachineSubfolder.id == folder_id,
+        MachineSubfolder.machine_id == machine.id
+    ).first()
+    if not subfolder:
+        raise HTTPException(status_code=404, detail="Klasör bulunamadı!")
+    db.delete(subfolder)
+    db.commit()
+    return {"status": "ok"}
 
 # ----------------- SESLİ RAPOR AYRIŞTIRMA (STT & NLP) -----------------
 
@@ -385,7 +453,7 @@ def create_log(
     log = MaintenanceLog(
         machine_id=machine.id,
         user_id=current_user.id,
-        date_str=data.date_str or datetime.now().strftime("%Y-%m-%d"),
+        date_str=data.date_str or now_tr().strftime("%Y-%m-%d"),
         shift=data.shift or "1. Vardiya (08:00 - 16:00)",
         failure_description=data.failure_description,
         action_taken=data.action_taken,
@@ -475,7 +543,14 @@ def append_to_server_excel(
                 except ValueError:
                     pass
         
-        now = datetime.now()
+        now = now_tr()
+        if data.client_time and ":" in data.client_time:
+            try:
+                hh_str, mm_str = data.client_time.strip().split(":")[:2]
+                now = now.replace(hour=int(hh_str), minute=int(mm_str))
+            except Exception:
+                pass
+
         if entry_dt:
             entry_dt = entry_dt.replace(hour=now.hour, minute=now.minute, second=now.second)
         else:
@@ -648,15 +723,25 @@ def export_handover_excel_file(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user)
 ):
-    """Vardiya İş Aktarım Formunu (FR-PE-0658) Excel olarak indirir."""
-    if not date_str:
-        date_str = datetime.now().strftime("%Y-%m-%d")
-    tasks = db.query(HandoverTask).filter(HandoverTask.date_str == date_str).order_by(HandoverTask.id.asc()).all()
-    file_path = ExcelService.export_handover_excel(date_str, tasks)
-    return FileResponse(
-        str(file_path),
+    """Seçilen günün Vardiya İş Aktarım Formunu sunucuya kaydetmeden doğrudan cihaza (.xlsx) indirir."""
+    target_date = now_tr().strftime("%Y-%m-%d")
+    if date_str:
+        cleaned = date_str.strip().split()[0]
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                target_date = datetime.strptime(cleaned, fmt).strftime("%Y-%m-%d")
+                break
+            except ValueError:
+                pass
+
+    tasks = db.query(HandoverTask).filter(HandoverTask.date_str == target_date).order_by(HandoverTask.id.asc()).all()
+    excel_bytes, filename = ExcelService.export_handover_excel_bytes(target_date, tasks)
+    return Response(
+        content=excel_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=file_path.name
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
     )
 
 @app.get("/api/excel/export")
@@ -714,7 +799,7 @@ def get_doruk_rows(date_str: Optional[str] = None, db: Session = Depends(get_db)
 def export_doruk_excel(date_str: Optional[str] = None, db: Session = Depends(get_db)):
     """Seçilen tarihteki Doruk Keypet dosyasını bilgisayara Excel formatında indirir."""
     _ensure_doruk_enabled()
-    target_date = date_str or datetime.now().strftime("%Y-%m-%d")
+    target_date = date_str or now_tr().strftime("%Y-%m-%d")
     file_path = DorukService.export_doruk_file(db, target_date)
     if not file_path or not Path(file_path).exists():
         raise HTTPException(status_code=404, detail="Doruk dosyası oluşturulamadı veya bulunamadı!")

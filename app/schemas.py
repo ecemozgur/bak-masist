@@ -44,6 +44,21 @@ class MachineBase(BaseModel):
 class MachineCreate(MachineBase):
     pass
 
+class MachineSubfolderCreate(BaseModel):
+    folder_name: str
+    description: Optional[str] = None
+
+class MachineSubfolderResponse(BaseModel):
+    id: int
+    machine_id: int
+    folder_name: str
+    description: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class MachineResponse(MachineBase):
     id: int
     total_downtime_minutes: int
@@ -125,6 +140,7 @@ class ServerExcelAppendRequest(BaseModel):
     operator_name: str
     shift: Optional[str] = None
     date_str: Optional[str] = None
+    client_time: Optional[str] = None
     include_timestamp: bool = True
     sync_to_doruk: bool = True
     user_id: Optional[int] = None

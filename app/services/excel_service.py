@@ -1,15 +1,16 @@
+import io
 import os
 import re
 import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from app.config import EXPORTS_DIR, SERVER_EXCEL_BASE_DIR, EXCEL_TEMPLATE_PATH
+from app.config import EXPORTS_DIR, SERVER_EXCEL_BASE_DIR, EXCEL_TEMPLATE_PATH, now_tr
 from app.models import MaintenanceLog
 from app.services.s3_service import S3Service
 
@@ -65,7 +66,7 @@ class ExcelService:
     @classmethod
     def get_month_folder(cls, dt: datetime = None) -> Path:
         if not dt:
-            dt = datetime.now()
+            dt = now_tr()
         month_name = TURKISH_MONTHS.get(dt.month, f"{dt.month:02d}")
         month_dir = SERVER_EXCEL_BASE_DIR / month_name
         month_dir.mkdir(parents=True, exist_ok=True)
@@ -74,7 +75,7 @@ class ExcelService:
     @classmethod
     def get_daily_filename(cls, dt: datetime = None) -> str:
         if not dt:
-            dt = datetime.now()
+            dt = now_tr()
         day_name = TURKISH_DAYS.get(dt.weekday(), "GÜN")
         return f"{dt.day:02d}.{dt.month:02d}.{dt.year} {day_name}.xlsx"
 
@@ -86,7 +87,7 @@ class ExcelService:
     @classmethod
     def get_s3_key(cls, dt: datetime = None) -> str:
         if not dt:
-            dt = datetime.now()
+            dt = now_tr()
         return S3Service.build_key(cls.get_month_folder(dt).name, cls.get_daily_filename(dt))
 
     @classmethod
@@ -96,7 +97,7 @@ class ExcelService:
         tüm başlıklar, formüller ve kriterler korunarak temiz bir günlük dosya oluşturur.
         """
         if not dt:
-            dt = datetime.now()
+            dt = now_tr()
 
         with _excel_lock:
             target_path = cls.get_daily_excel_path(dt)
@@ -275,7 +276,7 @@ class ExcelService:
         Operatörün onayladığı satırı sunucudaki gün Excel'ine yazar.
         """
         if not dt:
-            dt = datetime.now()
+            dt = now_tr()
 
         with _excel_lock:
             file_path = cls.ensure_daily_excel_file(dt)
@@ -351,7 +352,7 @@ class ExcelService:
     def get_today_status(cls, dt: datetime = None) -> Dict[str, Any]:
         """Bugünkü Excel dosyasının durumunu ve girilen işleri listeler."""
         if not dt:
-            dt = datetime.now()
+            dt = now_tr()
 
         with _excel_lock:
             file_path = cls.get_daily_excel_path(dt)
@@ -414,7 +415,7 @@ class ExcelService:
     def export_shift_report(cls, logs: List[MaintenanceLog], report_date: str = None) -> str:
         """Eski sistem dışa aktarım desteği (gerekirse doğrudan indirmek için)."""
         if not report_date:
-            report_date = datetime.now().strftime("%Y-%m-%d")
+            report_date = now_tr().strftime("%Y-%m-%d")
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -451,66 +452,28 @@ class ExcelService:
                 cell.font = regular_font
                 cell.border = box_border
 
-        filename = f"Doruk_Ariza_Kayitlari_{report_date}_{datetime.now().strftime('%H%M%S')}.xlsx"
+        filename = f"Doruk_Ariza_Kayitlari_{report_date}_{now_tr().strftime('%H%M%S')}.xlsx"
         file_path = EXPORTS_DIR / filename
         wb.save(str(file_path))
         return str(file_path)
 
     @classmethod
-    def export_handover_excel(cls, date_str: str, tasks: list) -> Path:
+    def _build_daily_handover_workbook(cls, date_str: str, tasks: list) -> Tuple[openpyxl.Workbook, str]:
         """
-        Vardiya İş Aktarım Formu (Doküman no: FR-PE-0658) için resmi formatta Excel çıktısı üretir.
+        Seçilen tek bir gün (günlük) için Vardiya İş Aktarım Formu (is_aktarım.xlsx düzeninde:
+        A sütunu TARİH, B-D: 08:00-16:00, E-G: 16:00-24:00, H-J: 24:00-08:00) üretir.
         """
-        template_candidates = [
-            Path("app/templates_excel/FR-PE-0658_SABLON.xlsx"),
-            SERVER_EXCEL_BASE_DIR / "FR-PE-0658_1 VARDİYA İŞ AKTARIM FORMU.xlsx"
-        ]
-        template_path = None
-        for cand in template_candidates:
-            if cand.exists():
-                template_path = cand
-                break
-
-        if not template_path:
-            raise FileNotFoundError("FR-PE-0658 İş Aktarım Formu şablonu bulunamadı.")
-
-        wb = openpyxl.load_workbook(str(template_path))
-        ws = wb.active
-
-        # Tarih formatlaması
         clean_date = date_str
         try:
             if "-" in date_str:
-                parts = date_str.split("-")
-                clean_date = f"{parts[2]}.{parts[1]}.{parts[0]}"
+                parts = date_str.strip().split()[0].split("-")
+                if len(parts) == 3 and len(parts[0]) == 4:
+                    clean_date = f"{parts[2]}.{parts[1]}.{parts[0]}"
         except Exception:
             clean_date = date_str
 
-        slot_rows = [6, 9, 12, 15, 18, 21, 24, 27, 30]
-
-        # Şablondaki eski veri satırlarını temizle (slot hücreleri)
-        for r in slot_rows:
-            for c in range(1, 12):
-                try:
-                    cell = ws.cell(r, c)
-                    if cell.__class__.__name__ != "MergedCell":
-                        if cell.value is not None and not str(cell.value).startswith("="):
-                            cell.value = None
-                except Exception:
-                    pass
-
-        # Tarih hücrelerini yaz (A6 ve H6)
-        try:
-            ws.cell(6, 1).value = clean_date
-            ws.cell(6, 8).value = clean_date
-        except Exception:
-            pass
-
         # Görevleri vardiyalara göre grupla
-        s1 = []  # 08:00-16:00
-        s2 = []  # 16:00-24:00
-        s3 = []  # 24:00-08:00
-
+        s1, s2, s3 = [], [], []
         for t in tasks:
             shift_text = (getattr(t, "shift", "") or "").replace(" ", "").replace(":", ".")
             if "08" in shift_text and "16" in shift_text:
@@ -520,31 +483,168 @@ class ExcelService:
             else:
                 s3.append(t)
 
-        for i, t in enumerate(s1):
-            if i >= len(slot_rows):
-                break
-            r = slot_rows[i]
-            ws.cell(r, 2).value = getattr(t, "task_description", "")
-            ws.cell(r, 3).value = getattr(t, "assigned_person", "")
-            ws.cell(r, 4).value = getattr(t, "status", "Devam Ediyor")
+        def _format_task_desc(task_obj) -> str:
+            desc = (getattr(task_obj, "task_description", "") or "").strip()
+            notes = (getattr(task_obj, "notes", "") or "").strip()
+            if notes:
+                return f"{desc}\n(Not: {notes})"
+            return desc
 
-        for i, t in enumerate(s2):
-            if i >= len(slot_rows):
-                break
-            r = slot_rows[i]
-            ws.cell(r, 5).value = getattr(t, "task_description", "")
-            ws.cell(r, 6).value = getattr(t, "assigned_person", "")
-            ws.cell(r, 7).value = getattr(t, "status", "Devam Ediyor")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "İŞ AKTARIM FORMU"
+        ws.views.sheetView[0].showGridLines = True
 
-        for i, t in enumerate(s3):
-            if i >= len(slot_rows):
-                break
-            r = slot_rows[i]
-            ws.cell(r, 9).value = getattr(t, "task_description", "")
-            ws.cell(r, 10).value = getattr(t, "assigned_person", "")
-            ws.cell(r, 11).value = getattr(t, "status", "Devam Ediyor")
+        # Sütun genişlikleri (is_aktarım.xlsx ile birebir)
+        col_widths = {
+            "A": 8.0,
+            "B": 36.0, "C": 16.0, "D": 28.0,
+            "E": 36.0, "F": 16.0, "G": 28.0,
+            "H": 36.0, "I": 16.0, "J": 28.0,
+        }
+        for col_letter, width in col_widths.items():
+            ws.column_dimensions[col_letter].width = width
 
-        export_filename = f"FR-PE-0658_IS_AKTARIM_FORMU_{clean_date}.xlsx"
+        thin = Side(border_style="thin", color="000000")
+        medium = Side(border_style="medium", color="000000")
+        cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        header_border = Border(left=thin, right=thin, top=medium, bottom=medium)
+
+        title_font = Font(name="Aptos Narrow", size=18, bold=True)
+        meta_font = Font(name="Aptos Narrow", size=10, bold=False)
+        shift_hdr_font = Font(name="Aptos Narrow", size=15, bold=True)
+        sub_hdr_font = Font(name="Aptos Narrow", size=13, bold=True)
+        date_font = Font(name="Aptos Narrow", size=24, bold=True)
+        desc_font = Font(name="Aptos Narrow", size=12, bold=True)
+        person_font = Font(name="Aptos Narrow", size=11, bold=True)
+        status_font = Font(name="Aptos Narrow", size=11, bold=True)
+
+        header_fill = PatternFill(start_color="F2F4F8", end_color="F2F4F8", fill_type="solid")
+
+        # Üst Başlıklar (Satır 1 - 3)
+        ws.row_dimensions[1].height = 24
+        ws.row_dimensions[2].height = 12
+        ws.row_dimensions[3].height = 18
+
+        ws.merge_cells("A1:J1")
+        ws["A1"] = "VARDİYA İŞ AKTARIM FORMU"
+        ws["A1"].font = title_font
+        ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws["A3"] = "Sayfa no: 1 / 1"
+        ws["A3"].font = meta_font
+        ws["C3"] = "Rev. 24.7.2023"
+        ws["C3"].font = meta_font
+        ws["E3"] = "Doküman no: FR-PE-0658"
+        ws["E3"].font = meta_font
+        ws["J3"] = "Otomotiv Parçaları San. ve Tic. A.Ş."
+        ws["J3"].font = meta_font
+        ws["J3"].alignment = Alignment(horizontal="right", vertical="center")
+
+        # Tablo Başlıkları (Satır 4 - 5)
+        ws.row_dimensions[4].height = 26
+        ws.row_dimensions[5].height = 42
+
+        ws.merge_cells("A4:A5")
+        ws["A4"] = "TARİH"
+        ws["A4"].font = shift_hdr_font
+        ws["A4"].alignment = Alignment(horizontal="center", vertical="center")
+
+        shift_headers = [
+            ("B4:D4", "B4", "08:00-16:00 VARDİYASI", 2),
+            ("E4:G4", "E4", "16:00-24:00 VARDİYASI", 5),
+            ("H4:J4", "H4", "24:00-08:00 VARDİYASI", 8),
+        ]
+        for merge_range, top_cell, title, start_col in shift_headers:
+            ws.merge_cells(merge_range)
+            ws[top_cell] = title
+            ws[top_cell].font = shift_hdr_font
+            ws[top_cell].alignment = Alignment(horizontal="center", vertical="center")
+
+            sub_titles = ["YAPILACAK İŞLER", "KİŞİ", "SON DURUM"]
+            for offset, st in enumerate(sub_titles):
+                c = ws.cell(5, start_col + offset, value=st)
+                c.font = sub_hdr_font
+                c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        for r in (4, 5):
+            for c in range(1, 11):
+                cell = ws.cell(r, c)
+                cell.border = header_border
+                cell.fill = header_fill
+
+        # Günlük veri slotları (en az 4 slot; daha fazla görev varsa otomatik genişler)
+        num_slots = max(4, len(s1), len(s2), len(s3))
+        start_row = 6
+        slot_start_rows = []
+
+        for slot_idx in range(num_slots):
+            r_top = start_row + slot_idx * 3
+            r_bot = r_top + 2
+            slot_start_rows.append(r_top)
+            for rr in range(r_top, r_bot + 1):
+                ws.row_dimensions[rr].height = 28
+
+            for col_idx in range(2, 11):
+                ws.merge_cells(start_row=r_top, start_column=col_idx, end_row=r_bot, end_column=col_idx)
+
+        last_row = start_row + num_slots * 3 - 1
+
+        # A sütunu: Günlük Tarih (Dikey / 90 derece)
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=last_row, end_column=1)
+        date_cell = ws.cell(start_row, 1, value=clean_date)
+        date_cell.font = date_font
+        date_cell.alignment = Alignment(horizontal="center", vertical="center", text_rotation=90)
+
+        # Görevleri ilgili vardiya sütunlarına yaz
+        shift_groups = [
+            (s1, 2),  # B, C, D
+            (s2, 5),  # E, F, G
+            (s3, 8),  # H, I, J
+        ]
+        for group_tasks, base_col in shift_groups:
+            for idx, task_obj in enumerate(group_tasks):
+                r_top = slot_start_rows[idx]
+                c_desc = ws.cell(r_top, base_col, value=_format_task_desc(task_obj))
+                c_pers = ws.cell(r_top, base_col + 1, value=getattr(task_obj, "assigned_person", ""))
+                c_stat = ws.cell(r_top, base_col + 2, value=getattr(task_obj, "status", "Devam Ediyor"))
+
+                c_desc.font = desc_font
+                c_desc.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+                c_pers.font = person_font
+                c_pers.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+                c_stat.font = status_font
+                c_stat.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        # Tüm veri hücrelerine kenarlık uygula
+        for r in range(start_row, last_row + 1):
+            for c in range(1, 11):
+                ws.cell(r, c).border = cell_border
+
+        export_filename = f"IS_AKTARIM_FORMU_{clean_date}.xlsx"
+        return wb, export_filename
+
+    @classmethod
+    def export_handover_excel_bytes(cls, date_str: str, tasks: list) -> Tuple[bytes, str]:
+        """
+        Günlük Vardiya İş Aktarım Formunu sunucu diskine kaydetmeden doğrudan bellekten (bytes)
+        kullanıcının cihazına indirilmek üzere üretir.
+        """
+        wb, export_filename = cls._build_daily_handover_workbook(date_str, tasks)
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        wb.close()
+        buffer.seek(0)
+        return buffer.getvalue(), export_filename
+
+    @classmethod
+    def export_handover_excel(cls, date_str: str, tasks: list) -> Path:
+        """
+        Vardiya İş Aktarım Formu için günlük Excel çıktısı üretir.
+        """
+        wb, export_filename = cls._build_daily_handover_workbook(date_str, tasks)
         out_path = EXPORTS_DIR / export_filename
         wb.save(str(out_path))
         wb.close()

@@ -188,13 +188,26 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 
 def is_admin_role(role: Optional[str]) -> bool:
-    return (role or "").upper() in ("ADMIN", "AMIR", "YONETICI")
+    return (role or "").upper() == "ADMIN"
+
+
+def is_manager_or_admin_role(role: Optional[str]) -> bool:
+    return (role or "").upper() in ("ADMIN", "YONETICI", "YÖNETİCİ")
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if not is_admin_role(current_user.role):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bu işlem için yönetici (ADMIN) yetkisi gereklidir.",
+            detail="Bu işlem için sistem yöneticisi (ADMIN) yetkisi gereklidir.",
+        )
+    return current_user
+
+
+def require_manager_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    if not is_manager_or_admin_role(current_user.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu işlem için Yönetici (YONETICI) veya Admin yetkisi gereklidir.",
         )
     return current_user

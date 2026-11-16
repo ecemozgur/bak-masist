@@ -534,6 +534,8 @@ async function submitServerExcelLog(event) {
   const combinedLineMach = parts.length > 0 ? parts.join(" - ") : (building !== "HİÇBİRİ" ? building : "GENEL");
 
   const dateVal = document.getElementById("formDateInput")?.value || "";
+  const nowObj = new Date();
+  const clientTime = `${String(nowObj.getHours()).padStart(2, "0")}:${String(nowObj.getMinutes()).padStart(2, "0")}`;
 
   const payload = {
     area_line: combinedLineMach,
@@ -546,6 +548,7 @@ async function submitServerExcelLog(event) {
     operator_name: operatorName,
     shift: shift,
     date_str: dateVal,
+    client_time: clientTime,
     include_timestamp: includeTs,
     sync_to_doruk: !!document.getElementById("tab-doruk-sync"),
     user_id: currentUser ? currentUser.id : null
@@ -674,6 +677,11 @@ function downloadCurrentServerExcel() {
   const dateVal = document.getElementById("formDateInput")?.value || "";
   const url = dateVal ? `/api/server-excel/download?date_str=${encodeURIComponent(dateVal)}` : "/api/server-excel/download";
   window.open(url, "_blank");
+}
+
+function downloadCurrentDateHandoverExcel() {
+  const dateVal = document.getElementById("formDateInput")?.value || formatDateToIso(new Date());
+  window.open(`/api/handover/export?date_str=${encodeURIComponent(dateVal)}`, "_blank");
 }
 
 // ----------------- SERVER EXCEL DURUMUNU YÜKLEME -----------------
@@ -1103,8 +1111,11 @@ function updateFormDatalists() {
 }
 
 // ----------------- MAKİNE KLASÖR DETAY MODALI -----------------
+let activeFolderMachineCode = null;
+
 async function openMachineFolder(machineCode) {
   try {
+    activeFolderMachineCode = machineCode;
     const res = await fetch(`/api/machines/${machineCode}/folder`);
     const data = await res.json();
 
@@ -1112,6 +1123,45 @@ async function openMachineFolder(machineCode) {
     document.getElementById("modalMachineName").innerText = `${data.machine.name} (${data.machine.department} - ${data.machine.line})`;
     document.getElementById("modalTotalDowntime").innerText = `${data.machine.total_downtime} dk`;
     document.getElementById("modalInterventionCount").innerText = data.total_interventions;
+
+    const btnAddSub = document.getElementById("btnAddMachineSubfolder");
+    if (btnAddSub) {
+      if (canManageMachineFolders(currentUser)) {
+        btnAddSub.classList.remove("hidden");
+      } else {
+        btnAddSub.classList.add("hidden");
+      }
+    }
+    toggleMachineSubfolderForm(false);
+
+    // Alt klasörleri listele
+    const subList = document.getElementById("modalMachineSubfoldersList");
+    if (subList) {
+      const subfolders = data.subfolders || [];
+      if (subfolders.length === 0) {
+        subList.innerHTML = `<div class="col-span-full text-xs text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 text-center">Bu makine dosyasına henüz ek klasör tanımlanmamış.</div>`;
+      } else {
+        subList.innerHTML = subfolders.map(sf => `
+          <div class="bg-blue-50/50 hover:bg-blue-50 p-3 rounded-xl border border-blue-200/80 flex items-start justify-between gap-2 transition">
+            <div class="flex items-start gap-2.5 min-w-0">
+              <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                <i data-lucide="folder" class="w-4 h-4"></i>
+              </div>
+              <div class="min-w-0">
+                <p class="text-xs font-bold text-slate-900 truncate">${escapeHtml(sf.folder_name)}</p>
+                ${sf.description ? `<p class="text-[11px] text-slate-600 mt-0.5 break-words">${escapeHtml(sf.description)}</p>` : ''}
+                <p class="text-[10px] text-slate-400 mt-1">👤 ${escapeHtml(sf.created_by)} • ${escapeHtml(sf.created_at)}</p>
+              </div>
+            </div>
+            ${canManageMachineFolders(currentUser) ? `
+              <button type="button" onclick="deleteMachineSubfolder(${sf.id})" class="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition shrink-0" title="Klasörü Sil">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            ` : ''}
+          </div>
+        `).join("");
+      }
+    }
 
     const list = document.getElementById("modalMachineHistoryList");
     if (data.history.length === 0) {
@@ -1140,6 +1190,65 @@ async function openMachineFolder(machineCode) {
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     console.error("Klasör detayı açılamadı:", e);
+  }
+}
+
+function toggleMachineSubfolderForm(forceState) {
+  const form = document.getElementById("machineSubfolderForm");
+  if (!form) return;
+  const show = typeof forceState === "boolean" ? forceState : form.classList.contains("hidden");
+  if (show) {
+    form.classList.remove("hidden");
+    document.getElementById("subfolderNameInput")?.focus();
+  } else {
+    form.classList.add("hidden");
+    const nameIn = document.getElementById("subfolderNameInput");
+    const descIn = document.getElementById("subfolderDescInput");
+    if (nameIn) nameIn.value = "";
+    if (descIn) descIn.value = "";
+  }
+}
+
+async function submitMachineSubfolder(event) {
+  event.preventDefault();
+  if (!activeFolderMachineCode) return;
+  const folderName = document.getElementById("subfolderNameInput")?.value.trim() || "";
+  const description = document.getElementById("subfolderDescInput")?.value.trim() || "";
+  if (!folderName) return;
+
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/subfolders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_name: folderName, description: description || null })
+    });
+    if (res.ok) {
+      toggleMachineSubfolderForm(false);
+      await openMachineFolder(activeFolderMachineCode);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Klasör eklenemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
+}
+
+async function deleteMachineSubfolder(folderId) {
+  if (!activeFolderMachineCode) return;
+  if (!confirm("Bu klasörü silmek istediğinize emin misiniz?")) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/subfolders/${folderId}`, {
+      method: "DELETE"
+    });
+    if (res.ok) {
+      await openMachineFolder(activeFolderMachineCode);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Klasör silinemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
   }
 }
 
@@ -1517,8 +1626,14 @@ async function onDoneJobsDateChanged() {
   const badgeEl = document.getElementById("doneJobsBadgeInfo");
   const tbody = document.getElementById("doneJobsTableBody");
 
+  const hoTitleEl = document.getElementById("doneHandoverTableTitle");
+  const hoBadgeEl = document.getElementById("doneHandoverBadgeInfo");
+  const hoTbody = document.getElementById("doneHandoverTableBody");
+
   if (titleEl) titleEl.innerText = `${dateVal} Tarihinde Yapılan İşler`;
   if (badgeEl) badgeEl.innerText = "Yükleniyor...";
+  if (hoTitleEl) hoTitleEl.innerText = `${dateVal} Tarihinde Vardiya İş Aktarım Kayıtları`;
+  if (hoBadgeEl) hoBadgeEl.innerText = "Yükleniyor...";
 
   try {
     const res = await fetch(`/api/server-excel/status?date_str=${encodeURIComponent(dateVal)}`);
@@ -1535,27 +1650,61 @@ async function onDoneJobsDateChanged() {
       badgeEl.innerHTML = `Toplam: <b class="text-blue-700 font-bold">${records.length} İşlem</b> | Toplam Süre: <b class="text-emerald-700 font-bold">${totalMinutes} dk</b>`;
     }
 
-    if (!tbody) return;
-    if (records.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">Bu tarihte (${dateVal}) henüz yapılan bir iş kaydı bulunamadı.</td></tr>`;
-      return;
+    if (tbody) {
+      if (records.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">Bu tarihte (${dateVal}) henüz yapılan bir iş kaydı bulunamadı.</td></tr>`;
+      } else {
+        tbody.innerHTML = records.map((r, idx) => `
+          <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+            <td class="p-2.5 text-center font-bold text-slate-500">${idx + 1}</td>
+            <td class="p-2.5 text-center font-medium text-slate-600 bg-slate-50/50">${r.sheet}</td>
+            <td class="p-2.5 font-bold text-blue-900">${r.area || '-'}</td>
+            <td class="p-2.5 text-slate-700 font-medium">${r.description}</td>
+            <td class="p-2.5 text-center font-bold text-purple-700">${r.criterion_no}</td>
+            <td class="p-2.5 text-center font-bold text-slate-800">${r.time_spent} dk</td>
+            <td class="p-2.5 text-center font-semibold text-slate-700">${r.operator}</td>
+          </tr>
+        `).join("");
+      }
     }
-
-    tbody.innerHTML = records.map((r, idx) => `
-      <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-        <td class="p-2.5 text-center font-bold text-slate-500">${idx + 1}</td>
-        <td class="p-2.5 text-center font-medium text-slate-600 bg-slate-50/50">${r.sheet}</td>
-        <td class="p-2.5 font-bold text-blue-900">${r.area || '-'}</td>
-        <td class="p-2.5 text-slate-700 font-medium">${r.description}</td>
-        <td class="p-2.5 text-center font-bold text-purple-700">${r.criterion_no}</td>
-        <td class="p-2.5 text-center font-bold text-slate-800">${r.time_spent} dk</td>
-        <td class="p-2.5 text-center font-semibold text-slate-700">${r.operator}</td>
-      </tr>
-    `).join("");
   } catch (e) {
     console.error("Yapılan işler listesi yüklenemedi:", e);
     if (tbody) {
       tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-rose-500">Kayıtlar yüklenirken hata oluştu.</td></tr>`;
+    }
+  }
+
+  try {
+    const hoRes = await fetch(`/api/handover/tasks?date_str=${encodeURIComponent(dateVal)}`);
+    if (!hoRes.ok) throw new Error("İş aktarım kayıtları alınamadı");
+    const hoTasks = await hoRes.json();
+
+    if (hoBadgeEl) {
+      hoBadgeEl.innerHTML = `Toplam: <b class="text-purple-700 font-bold">${hoTasks.length} Devir Kaydı</b>`;
+    }
+
+    if (hoTbody) {
+      if (hoTasks.length === 0) {
+        hoTbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400">Bu tarihte (${dateVal}) henüz vardiya iş aktarım kaydı bulunmuyor.</td></tr>`;
+      } else {
+        hoTbody.innerHTML = hoTasks.map((t, idx) => `
+          <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+            <td class="p-2.5 text-center font-bold text-slate-500">${idx + 1}</td>
+            <td class="p-2.5 text-center font-semibold text-slate-700 bg-slate-50/50">${escapeHtml(t.shift)}</td>
+            <td class="p-2.5 text-slate-800 font-medium">
+              ${escapeHtml(t.task_description)}
+              ${t.notes ? `<span class="block text-[11px] text-slate-500 italic mt-0.5">Not: ${escapeHtml(t.notes)}</span>` : ''}
+            </td>
+            <td class="p-2.5 text-center font-bold text-blue-900">${escapeHtml(t.assigned_person)}</td>
+            <td class="p-2.5 text-center font-semibold text-purple-700">${escapeHtml(t.status)}</td>
+          </tr>
+        `).join("");
+      }
+    }
+  } catch (e) {
+    console.error("İş aktarım listesi yüklenemedi:", e);
+    if (hoTbody) {
+      hoTbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-rose-500">İş aktarım kayıtları yüklenirken hata oluştu.</td></tr>`;
     }
   }
 }
@@ -1577,6 +1726,12 @@ function downloadSelectedDateServerExcel() {
   window.open(`/api/server-excel/download?date_str=${encodeURIComponent(dateVal)}`, "_blank");
 }
 
+function downloadSelectedDateHandoverExcel() {
+  const dateInput = document.getElementById("excelFilterDate");
+  const dateVal = dateInput?.value || formatDateToIso(new Date());
+  window.open(`/api/handover/export?date_str=${encodeURIComponent(dateVal)}`, "_blank");
+}
+
 function downloadTodayExcel() {
   const today = formatDateToIso(new Date());
   window.open(`/api/server-excel/download?date_str=${encodeURIComponent(today)}`, "_blank");
@@ -1595,7 +1750,11 @@ function downloadFilteredExcel() {
 let allUsers = [];
 
 function isAdminUser(user) {
-  return user && ["ADMIN", "AMIR", "YONETICI"].includes((user.role || "").toUpperCase());
+  return user && (user.role || "").toUpperCase() === "ADMIN";
+}
+
+function canManageMachineFolders(user) {
+  return user && ["ADMIN", "YONETICI", "YÖNETİCİ"].includes((user.role || "").toUpperCase());
 }
 
 function setInputError(el, hasError) {
@@ -1658,6 +1817,15 @@ function applyAuthenticatedUser(user) {
       btnAdmin.classList.remove("hidden");
     } else {
       btnAdmin.classList.add("hidden");
+    }
+  }
+
+  const btnNewMachine = document.getElementById("btnNewMachineFolder");
+  if (btnNewMachine) {
+    if (canManageMachineFolders(user)) {
+      btnNewMachine.classList.remove("hidden");
+    } else {
+      btnNewMachine.classList.add("hidden");
     }
   }
 
@@ -1733,6 +1901,8 @@ async function logoutUser() {
   currentUser = null;
   const btnAdmin = document.getElementById("btnAdminUsers");
   if (btnAdmin) btnAdmin.classList.add("hidden");
+  const btnNewMachine = document.getElementById("btnNewMachineFolder");
+  if (btnNewMachine) btnNewMachine.classList.add("hidden");
   showLoginOverlay();
 }
 
@@ -1776,6 +1946,17 @@ function closeAdminUsersModal() {
   if (modal) modal.classList.add("hidden");
 }
 
+function getRoleBadgeHtml(u) {
+  const r = (u.role || "").toUpperCase();
+  if (r === "ADMIN") {
+    return `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">ADMIN</span>`;
+  }
+  if (r === "YONETICI" || r === "YÖNETİCİ") {
+    return `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">YÖNETİCİ</span>`;
+  }
+  return `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">${u.role}</span>`;
+}
+
 function renderAdminUsersList() {
   const listEl = document.getElementById("adminUsersList");
   if (!listEl || !Array.isArray(allUsers)) return;
@@ -1791,12 +1972,19 @@ function renderAdminUsersList() {
         <div class="flex items-center space-x-2">
           <span class="px-2 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold rounded">${u.username}</span>
           <span class="font-bold text-slate-900">${u.full_name}</span>
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isAdminUser(u) ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}">${u.role}</span>
+          ${getRoleBadgeHtml(u)}
           ${!u.is_active ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">PASİF</span>` : ''}
         </div>
         <div class="text-[11px] text-slate-500 mt-0.5">${u.department}</div>
       </div>
-      <div class="flex items-center space-x-1.5">
+      <div class="flex flex-wrap items-center gap-1.5">
+        ${currentUser && u.id !== currentUser.id ? `
+          <select onchange="changeUserRole(${u.id}, this.value)" class="px-2 py-1 text-[11px] border border-slate-300 rounded-lg font-semibold bg-white text-slate-700 focus:outline-none">
+            <option value="TEKNISYEN" ${(u.role || '').toUpperCase() === 'TEKNISYEN' ? 'selected' : ''}>Bakımcı (TEKNISYEN)</option>
+            <option value="YONETICI" ${(u.role || '').toUpperCase() === 'YONETICI' ? 'selected' : ''}>Yönetici (YONETICI)</option>
+            <option value="ADMIN" ${(u.role || '').toUpperCase() === 'ADMIN' ? 'selected' : ''}>Sistem Yöneticisi (ADMIN)</option>
+          </select>
+        ` : ''}
         <button type="button" onclick="resetUserPin(${u.id}, '${u.username}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition">
           Şifre Sıfırla
         </button>
@@ -1875,6 +2063,25 @@ async function submitAdminCreateUser(event) {
     }
   } catch (e) {
     showAdminFormFeedback("Sunucuya bağlanılamadı.", true);
+  }
+}
+
+async function changeUserRole(userId, newRole) {
+  try {
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: newRole })
+    });
+    if (res.ok) {
+      await loadUsers();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Rol güncellenemedi."}`);
+      await loadUsers();
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
   }
 }
 
@@ -2245,11 +2452,61 @@ function speakCurrentRow() {
 }
 
 function openNewMachineModal() {
-  const code = prompt("Yeni Makine Kodu (örn: PRES-02):");
-  if (!code) return;
-  const name = prompt("Makine Adı (örn: 200 Ton Eksantrik Pres):");
-  if (!name) return;
-  alert(`Yeni makine (${code.toUpperCase()} - ${name}) için sistem yöneticisine bildirim iletildi.`);
+  if (!canManageMachineFolders(currentUser)) {
+    alert("Yeni makine klasörü eklemek için Yönetici (YONETICI) veya Admin yetkisi gereklidir.");
+    return;
+  }
+  const modal = document.getElementById("newMachineModal");
+  if (modal) {
+    modal.classList.remove("hidden");
+    if (window.lucide) lucide.createIcons();
+    document.getElementById("newMachineCode")?.focus();
+  }
+}
+
+function closeNewMachineModal() {
+  const modal = document.getElementById("newMachineModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function submitNewMachine(event) {
+  event.preventDefault();
+  const department = document.getElementById("newMachineDept")?.value || "A BİNASI (Montaj / Assembly)";
+  const line = document.getElementById("newMachineLine")?.value.trim().toUpperCase() || "GENEL HAT";
+  const code = document.getElementById("newMachineCode")?.value.trim().toUpperCase() || "";
+  const name = document.getElementById("newMachineName")?.value.trim() || "";
+  const model = document.getElementById("newMachineModel")?.value.trim() || "Standart İstasyon";
+
+  if (!code || !name) {
+    alert("Lütfen makine kodu ve adını doldurun.");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/machines", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: code,
+        name: name,
+        department: department,
+        line: line,
+        model: model,
+        status: "CALISIYOR"
+      })
+    });
+    if (res.ok) {
+      document.getElementById("newMachineForm")?.reset();
+      closeNewMachineModal();
+      await loadMachines();
+      alert(`✅ Yeni makine klasörü (${code} - ${name}) başarıyla eklendi!`);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Makine klasörü eklenemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
 }
 
 function initSpeechRecognition() {}
@@ -2450,10 +2707,21 @@ async function deleteHandoverTask(taskId) {
   }
 }
 
+function setHandoverDateQuick(type) {
+  const dateInput = document.getElementById("handoverDateFilter");
+  if (!dateInput) return;
+  const d = new Date();
+  if (type === "yesterday") {
+    d.setDate(d.getDate() - 1);
+  }
+  dateInput.value = formatDateToIso(d);
+  loadHandoverTasks();
+}
+
 function downloadHandoverExcel() {
   const dateInput = document.getElementById("handoverDateFilter");
-  const dateStr = dateInput?.value || new Date().toISOString().split("T")[0];
-  window.location.href = `/api/handover/export?date_str=${encodeURIComponent(dateStr)}`;
+  const dateStr = dateInput?.value || formatDateToIso(new Date());
+  window.open(`/api/handover/export?date_str=${encodeURIComponent(dateStr)}`, "_blank");
 }
 
 // ESC tuşu ile açık tüm modalları kapatma
@@ -2463,5 +2731,7 @@ document.addEventListener("keydown", (e) => {
     if (typeof closeOperatorSelectModal === "function") closeOperatorSelectModal();
     if (typeof closeCriteriaModal === "function") closeCriteriaModal();
     if (typeof closeAdminUsersModal === "function") closeAdminUsersModal();
+    if (typeof closeMachineFolderModal === "function") closeMachineFolderModal();
+    if (typeof closeNewMachineModal === "function") closeNewMachineModal();
   }
 });
