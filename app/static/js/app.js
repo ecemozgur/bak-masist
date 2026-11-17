@@ -257,17 +257,28 @@ function switchTab(tabId) {
 // ----------------- SESLİ DİKTE MODALI (MİKROFON PENCERESİ) -----------------
 let modalSpeechRecognizer = null;
 let isModalRecording = false;
+let userWantsModalRecording = false;
+let modalRestartTimer = null;
+let modalFinalTranscript = "";
 let voiceModalOpenedAt = 0;
 
-function openVoiceDictationModal(e) {
+function isMobileBrowser() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || "");
+}
+
+function openVoiceDictationModal(e, keepCustomTarget = false) {
   if (e && e.stopPropagation) e.stopPropagation();
+  if (!keepCustomTarget) {
+    dorukSpeechTarget = null;
+    handoverSpeechTarget = null;
+  }
   const modal = document.getElementById("voiceDictationModal");
   if (!modal) return;
 
   voiceModalOpenedAt = Date.now();
   const currentDesc = document.getElementById("formJobDescription")?.value?.trim() || "";
   const output = document.getElementById("modalDictationOutput");
-  if (output) output.value = currentDesc;
+  if (output && !keepCustomTarget) output.value = currentDesc;
 
   const alertBox = document.getElementById("modalMicAlert");
   if (alertBox) {
@@ -298,6 +309,7 @@ function appendToModalText(sampleText) {
   if (!output) return;
   const current = output.value.trim();
   output.value = current ? `${current} ${sampleText}` : sampleText;
+  modalFinalTranscript = output.value;
 }
 
 let dorukSpeechTarget = null;
@@ -306,7 +318,7 @@ let handoverSpeechTarget = null;
 function openVoiceDictationModalForDoruk() {
   dorukSpeechTarget = document.getElementById("dorukFormDescription");
   handoverSpeechTarget = null;
-  openVoiceDictationModal();
+  openVoiceDictationModal(null, true);
   const output = document.getElementById("modalDictationOutput");
   if (output && dorukSpeechTarget) {
     output.value = dorukSpeechTarget.value || "";
@@ -316,7 +328,7 @@ function openVoiceDictationModalForDoruk() {
 function openVoiceDictationForHandover() {
   handoverSpeechTarget = document.getElementById("handoverTaskDesc");
   dorukSpeechTarget = null;
-  openVoiceDictationModal();
+  openVoiceDictationModal(null, true);
   const output = document.getElementById("modalDictationOutput");
   if (output && handoverSpeechTarget) {
     output.value = handoverSpeechTarget.value || "";
@@ -345,97 +357,156 @@ function getSpeechRecognitionClass() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-function activateWindowsDictation() {
+function focusKeyboardDictation() {
+  stopModalDictation();
   const output = document.getElementById("modalDictationOutput");
   if (output) {
     output.focus();
-    output.setSelectionRange(output.value.length, output.value.length);
+    const len = output.value.length;
+    try { output.setSelectionRange(len, len); } catch (e) {}
   }
   const alertBox = document.getElementById("modalMicAlert");
   if (alertBox) {
-    alertBox.innerHTML = "💡 <b>KUTU SEÇİLDİ!</b> Şimdi klavyenizden <b>Windows Tuşu + H</b> (Win+H) tuşlarına basıp konuşmaya başlayabilirsiniz. Windows söylediklerinizi bu kutunun içine doğrudan yazacaktır.";
-    alertBox.className = "p-3 rounded-xl text-xs bg-blue-50 border border-blue-200 text-blue-800 font-medium leading-relaxed block animate-pulse";
+    if (isMobileBrowser()) {
+      alertBox.innerHTML = "📱 <b>TELEFON KLAVYESİ HAZIR!</b><br>Açılan telefon klavyenizin sağ üst / alt kısmındaki <b>🎙️ Mikrofon</b> simgesine dokunarak doğrudan konuşabilirsiniz (Tüm telefonlarda %100 kesintisiz çalışır).";
+    } else {
+      alertBox.innerHTML = "💻 <b>METİN KUTUSU SEÇİLDİ!</b><br>Şimdi klavyenizden <b>Windows Tuşu + H</b> (<b>Win + H</b>) tuşlarına basarak konuşmaya başlayabilirsiniz.";
+    }
+    alertBox.className = "p-3 rounded-xl text-xs bg-blue-50 border border-blue-200 text-blue-900 font-medium leading-relaxed block";
     alertBox.classList.remove("hidden");
   }
+}
+
+function activateWindowsDictation() {
+  focusKeyboardDictation();
 }
 
 async function toggleModalDictation() {
   const alertBox = document.getElementById("modalMicAlert");
 
-  if (isModalRecording) {
+  if (userWantsModalRecording || isModalRecording) {
     stopModalDictation();
+    return;
+  }
+
+  // HTTP (güvensiz bağlantı) kontrolü: Mobil tarayıcılar HTTPS olmadan mikrofon açmaz
+  if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    if (alertBox) {
+      const httpsUrl = `https://18.156.97.64.sslip.io${location.pathname}${location.search}`;
+      alertBox.innerHTML = `🔒 <b>GÜVENLİ BAĞLANTI (HTTPS) GEREKLİ:</b><br>Telefon ve tarayıcılar güvenlik gereği yalnızca <b>https://</b> adresinde mikrofon izni verir.<br>👉 <a href="${httpsUrl}" class="underline font-bold text-blue-700"> Güvenli Adrese (HTTPS) Geçmek İçin Tıklayın</a><br><br>💡 <b>Veya Hemen Şimdi:</b> Metin kutusuna dokunup telefon klavyenizdeki <b>🎙️ Mikrofon</b> tuşuyla konuşabilirsiniz.`;
+      alertBox.className = "p-3 rounded-xl text-xs bg-amber-50 border border-amber-200 text-amber-900 font-medium leading-relaxed block";
+      alertBox.classList.remove("hidden");
+    }
+    const output = document.getElementById("modalDictationOutput");
+    if (output) output.focus();
     return;
   }
 
   const SpeechRecognition = getSpeechRecognitionClass();
   if (!SpeechRecognition) {
-    if (alertBox) {
-      alertBox.innerHTML = "⚠️ <b>Tarayıcı Web Speech Desteği Kapalı:</b><br>Lütfen <b>Google Chrome</b> veya <b>Microsoft Edge</b> kullanınız.<br><br>👉 <b>Hemen Kullanmak İçin:</b> Aşağıdaki <b>[Win+H ile Sesli Yaz]</b> butonuna tıklayıp klavyenizden <b>Windows Tuşu + H</b> tuşlarına basarak Windows'un kendi sesli yazmasını kullanabilirsiniz.";
-      alertBox.className = "p-3 rounded-xl text-xs bg-amber-50 border border-amber-200 text-amber-900 font-medium leading-relaxed block";
-      alertBox.classList.remove("hidden");
-    }
-    activateWindowsDictation();
+    focusKeyboardDictation();
     return;
   }
 
-  // Anında dinleme görseline geç
+  const output = document.getElementById("modalDictationOutput");
+  modalFinalTranscript = output ? output.value.trim() : "";
+  userWantsModalRecording = true;
+
   updateModalDictationUI(true);
   if (alertBox) {
     alertBox.innerHTML = "";
     alertBox.classList.add("hidden");
   }
 
+  startModalRecognitionSession();
+}
+
+function startModalRecognitionSession() {
+  if (!userWantsModalRecording) return;
+  const SpeechRecognition = getSpeechRecognitionClass();
+  if (!SpeechRecognition) return;
+
+  const mobile = isMobileBrowser();
+  const output = document.getElementById("modalDictationOutput");
+
   try {
-    if (modalSpeechRecognizer) {
-      try { modalSpeechRecognizer.abort(); } catch (e) {}
-    }
+    const recognizer = new SpeechRecognition();
+    modalSpeechRecognizer = recognizer;
+    // Mobil tarayıcılarda continuous=true kelime tekrarına ve kilitlenmeye yol açar;
+    // mobilde continuous=false + otomatik yeniden başlatma en kararlı yöntemdir.
+    recognizer.continuous = !mobile;
+    recognizer.interimResults = true;
+    recognizer.maxAlternatives = 1;
+    recognizer.lang = "tr-TR";
 
-    modalSpeechRecognizer = new SpeechRecognition();
-    modalSpeechRecognizer.continuous = true;
-    modalSpeechRecognizer.interimResults = true;
-    modalSpeechRecognizer.lang = "tr-TR";
-
-    const output = document.getElementById("modalDictationOutput");
-    const baseText = output ? output.value.trim() : "";
-
-    modalSpeechRecognizer.onstart = () => {
+    recognizer.onstart = () => {
+      if (!userWantsModalRecording) {
+        try { recognizer.stop(); } catch (e) {}
+        return;
+      }
       isModalRecording = true;
       updateModalDictationUI(true);
     };
 
-    modalSpeechRecognizer.onresult = (event) => {
-      let speechParts = "";
-      for (let i = 0; i < event.results.length; ++i) {
-        speechParts += event.results[i][0].transcript + " ";
+    recognizer.onresult = (event) => {
+      let sessionInterim = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const res = event.results[i];
+        const chunk = (res[0]?.transcript || "").trim();
+        if (!chunk) continue;
+
+        if (res.isFinal) {
+          const upperChunk = chunk.toUpperCase();
+          // Android Chrome bazen aynı final cümleyi üst üste gönderir; tekrarı önle
+          if (!modalFinalTranscript.endsWith(upperChunk)) {
+            modalFinalTranscript = modalFinalTranscript
+              ? `${modalFinalTranscript} ${upperChunk}`
+              : upperChunk;
+          }
+        } else {
+          sessionInterim += chunk + " ";
+        }
       }
-      if (output && speechParts.trim()) {
-        const full = (baseText ? baseText + " " : "") + speechParts.trim();
-        output.value = full.toUpperCase();
+
+      if (output) {
+        const combined = [modalFinalTranscript, sessionInterim.trim().toUpperCase()]
+          .filter(Boolean)
+          .join(" ");
+        output.value = combined;
       }
     };
 
-    modalSpeechRecognizer.onerror = (event) => {
+    recognizer.onerror = (event) => {
       console.warn("Modal speech recognition error:", event.error);
       const alertBox = document.getElementById("modalMicAlert");
-      stopModalDictation();
 
-      if (!alertBox) return;
-
+      // Konuşma arası sessizlik (no-speech) veya kullanıcı durdurması (aborted) kaydı kesmesin
       if (event.error === "no-speech") {
         const sub = document.getElementById("modalMicSubStatus");
-        if (sub) sub.innerText = "⚠️ Ses algılanamadı, lütfen mikrofona doğru konuşun...";
+        if (sub && userWantsModalRecording) {
+          sub.innerText = "🎙️ Dinlemeye devam ediliyor, konuşabilirsiniz...";
+        }
+        return;
+      }
+      if (event.error === "aborted") {
         return;
       }
 
+      // Kalıcı hatalarda kaydı durdur ve kullanıcıya net çözüm göster
+      stopModalDictation();
+      if (!alertBox) return;
+
       let errorHtml = "";
-      if (event.error === "not-allowed" || event.error === "permission-denied") {
-        errorHtml = "❌ <b>MİKROFON İZNİ GEREKİYOR:</b><br>Tarayıcı mikrofon iznini engellemiş veya sormuş olabilir.<br>👉 Adres çubuğundaki (URL solundaki) <b>Kilit</b> veya <b>Site Ayarları</b> simgesine tıklayıp <b>Mikrofon</b> iznini <b>İzin Ver</b> yapınız.<br><br>💡 Alternatif: <b>Win + H</b> tuşlarıyla Windows sesli yazmayı kullanabilirsiniz.";
+      if (event.error === "not-allowed" || event.error === "permission-denied" || event.error === "service-not-allowed") {
+        errorHtml = isMobileBrowser()
+          ? "❌ <b>MİKROFON İZNİ ENGELİ:</b><br>Tarayıcıda adres çubuğunun solundaki <b>Kilit / Site Ayarları</b> simgesinden <b>Mikrofon -> İzin Ver</b> yapınız.<br><br>👉 <b>En Pratik Çözüm:</b> Aşağıdaki metin kutusuna dokunup <b>telefon klavyenizin kendi 🎙️ Mikrofon tuşuna</b> basarak hemen konuşabilirsiniz."
+          : "❌ <b>MİKROFON İZNİ GEREKİYOR:</b><br>Adres çubuğunun solundaki <b>Kilit / Site Ayarları</b> simgesine tıklayıp <b>Mikrofon</b> iznini <b>İzin Ver</b> yapınız.<br><br>💡 Alternatif: <b>⌨️ Klavye Mikrofonuyla Yaz</b> butonuna tıklayıp <b>Win + H</b> tuşlarını kullanabilirsiniz.";
       } else if (event.error === "network") {
-        errorHtml = "⚠️ <b>ŞİRKET AĞI / PROXY ENGELİ:</b><br>Chrome Google ses sunucusuna bağlanamadı (Şirket güvenlik duvarı engelliyor olabilir).<br><br>👉 <b>Çok Kolay Çözüm:</b> Kutunun içine tıklayıp klavyenizden <b>Windows Tuşu + H</b> (Win+H) tuşlarına basarak doğrudan Windows'un dahili Türkçe sesli diktesini kullanabilirsiniz.";
+        errorHtml = "⚠️ <b>AĞ / SUNUCU BAĞLANTI ENGELİ:</b><br>Tarayıcı ses sunucusuna erişemedi.<br><br>👉 <b>Hemen Çözüm:</b> <b>[⌨️ Klavye Mikrofonuyla Yaz]</b> butonuna dokunup telefon klavyenizdeki mikrofonu veya bilgisayarda <b>Win + H</b> tuşlarını kullanabilirsiniz.";
       } else if (event.error === "audio-capture") {
-        errorHtml = "⚠️ <b>MİKROFON DONANIMI ALGILANAMADI:</b><br>Bu bilgisayara bağlı bir mikrofon veya kulaklık bulunamadı.<br>Kulaklık takabilir veya aşağıdaki hazır kalıp butonlarını kullanabilirsiniz.";
+        errorHtml = "⚠️ <b>MİKROFON BULUNAMADI VEYA BAŞKA UYGULAMA KULLANIYOR:</b><br>Mikrofonunuzun takılı olduğundan emin olun veya <b>[⌨️ Klavye Mikrofonuyla Yaz]</b> butonunu kullanın.";
       } else {
-        errorHtml = `⚠️ <b>Ses Tanıma Bilgisi (${event.error}):</b><br>Aşağıdaki hazır cümle kalıplarını tıklayarak veya klavyeden <b>Win + H</b> ile sesli yazabilirsiniz.`;
+        errorHtml = `⚠️ <b>Ses Tanıma Uyarısı (${event.error}):</b><br><b>[⌨️ Klavye Mikrofonuyla Yaz]</b> butonuna dokunarak telefon klavyesi mikrofonu veya <b>Win + H</b> ile sorunsuz dikte yapabilirsiniz.`;
       }
 
       alertBox.innerHTML = errorHtml;
@@ -443,18 +514,28 @@ async function toggleModalDictation() {
       alertBox.classList.remove("hidden");
     };
 
-    modalSpeechRecognizer.onend = () => {
-      if (isModalRecording) {
-        stopModalDictation();
+    recognizer.onend = () => {
+      // Kullanıcı durdurmadıysa (ör. nefes arası veya mobilde cümle sonu), otomatik devam et
+      if (userWantsModalRecording) {
+        if (modalRestartTimer) clearTimeout(modalRestartTimer);
+        modalRestartTimer = setTimeout(() => {
+          if (userWantsModalRecording) {
+            startModalRecognitionSession();
+          }
+        }, mobile ? 250 : 120);
+      } else {
+        isModalRecording = false;
+        updateModalDictationUI(false);
       }
     };
 
-    modalSpeechRecognizer.start();
+    recognizer.start();
   } catch (err) {
     console.error("Modal speech start error:", err);
     stopModalDictation();
+    const alertBox = document.getElementById("modalMicAlert");
     if (alertBox) {
-      alertBox.innerHTML = `⚠️ <b>Sesli Dikte Durumu:</b> ${err.message || err}<br>👉 Klavyenizden <b>Windows Tuşu + H</b> (Win+H) tuşlarına basarak konuşabilirsiniz.`;
+      alertBox.innerHTML = `⚠️ <b>Sesli Dikte Başlatılamadı:</b><br>👉 <b>[⌨️ Klavye Mikrofonuyla Yaz]</b> butonuna tıklayarak telefon klavyenizin mikrofonunu veya bilgisayarda <b>Win + H</b> tuşlarını kullanabilirsiniz.`;
       alertBox.className = "p-3 rounded-xl text-xs bg-amber-50 border border-amber-200 text-amber-900 font-medium leading-relaxed block";
       alertBox.classList.remove("hidden");
     }
@@ -462,10 +543,17 @@ async function toggleModalDictation() {
 }
 
 function stopModalDictation() {
+  userWantsModalRecording = false;
   isModalRecording = false;
+  if (modalRestartTimer) {
+    clearTimeout(modalRestartTimer);
+    modalRestartTimer = null;
+  }
   updateModalDictationUI(false);
   if (modalSpeechRecognizer) {
-    try { modalSpeechRecognizer.stop(); } catch (e) {}
+    const rec = modalSpeechRecognizer;
+    modalSpeechRecognizer = null;
+    try { rec.onend = null; rec.stop(); } catch (e) {}
   }
 }
 
