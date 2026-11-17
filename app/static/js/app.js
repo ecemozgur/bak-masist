@@ -1883,7 +1883,7 @@ async function submitLogin(event) {
       startAppAfterAuth();
     } else {
       const err = await res.json().catch(() => ({}));
-      showLoginOverlay(err.detail || "Sicil numarası veya PIN hatalı!");
+      showLoginOverlay(err.detail || "Kullanıcı veya şifre hatalı!");
     }
   } catch (e) {
     showLoginOverlay("Sunucuya bağlanılamadı.");

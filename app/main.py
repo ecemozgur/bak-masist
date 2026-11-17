@@ -84,7 +84,7 @@ async def serve_sw():
 def login(creds: UserLogin, request: Request, response: Response, db: Session = Depends(get_db)):
     sicil_no = creds.username.strip()
     if not sicil_no or not creds.pin_code:
-        raise HTTPException(status_code=400, detail="Sicil numarası ve PIN kodu zorunludur.")
+        raise HTTPException(status_code=400, detail="Kullanıcı ve şifre zorunludur.")
 
     client_ip = request.client.host if request.client else "unknown"
     check_rate_limit(client_ip, sicil_no)
@@ -92,7 +92,7 @@ def login(creds: UserLogin, request: Request, response: Response, db: Session = 
     user = db.query(User).filter(func.lower(User.username) == sicil_no.lower()).first()
     if not user or not user.is_active or not verify_pin(creds.pin_code, user.pin_code):
         record_failed_attempt(client_ip, sicil_no)
-        raise HTTPException(status_code=401, detail="Sicil numarası veya PIN kodu hatalı!")
+        raise HTTPException(status_code=401, detail="Kullanıcı veya şifre hatalı!")
 
     clear_failed_attempts(client_ip, sicil_no)
 
