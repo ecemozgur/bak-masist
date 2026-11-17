@@ -612,7 +612,7 @@ async function submitServerExcelLog(event) {
   const btn = document.getElementById("btnSubmitServerExcel");
   const origBtnText = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i><span>Server'a Yazılıyor...</span>`;
+  btn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i><span>Kayıt Ediliyor...</span>`;
   if (window.lucide) lucide.createIcons();
 
   const parts = [];
@@ -651,7 +651,7 @@ async function submitServerExcelLog(event) {
 
     if (res.ok) {
       const data = await res.json();
-      alert(`✅ BAŞARIYLA KAYDEDİLDİ!\n\n📁 Server Dosyası: ${data.file_name}\n📄 Sayfa: ${data.sheet_name}\n📍 Satır: ${data.row}\n⏰ Saat: ${data.timestamp}\n\nKayıt iş yeri sunucusundaki güncel Excel dosyasına işlendi.`);
+      alert(`✅ BAŞARIYLA KAYDEDİLDİ!\n\n📁 Dosya: ${data.file_name}\n📄 Sayfa: ${data.sheet_name}\n📍 Satır: ${data.row}\n⏰ Saat: ${data.timestamp}\n\nKayıt güncel Excel dosyasına işlendi.`);
       
       // Formu temizle ve yeni satıra hazırla
       const jobDescEl = document.getElementById("formJobDescription");
