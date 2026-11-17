@@ -60,10 +60,16 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index(request: Request):
+    app_js_path = STATIC_DIR / "js" / "app.js"
+    app_version = int(app_js_path.stat().st_mtime) if app_js_path.exists() else int(now_tr().timestamp())
     response = templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"criteria_list": CRITERIA_CATALOG, "doruk_enabled": DORUK_ENABLED}
+        context={
+            "criteria_list": CRITERIA_CATALOG,
+            "doruk_enabled": DORUK_ENABLED,
+            "app_version": app_version,
+        }
     )
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"

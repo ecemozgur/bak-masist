@@ -1978,24 +1978,20 @@ function renderAdminUsersList() {
         <div class="text-[11px] text-slate-500 mt-0.5">${u.department}</div>
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
-        ${currentUser && u.id !== currentUser.id ? `
-          <select onchange="changeUserRole(${u.id}, this.value)" class="px-2 py-1 text-[11px] border border-slate-300 rounded-lg font-semibold bg-white text-slate-700 focus:outline-none">
-            <option value="TEKNISYEN" ${(u.role || '').toUpperCase() === 'TEKNISYEN' ? 'selected' : ''}>Bakımcı (TEKNISYEN)</option>
-            <option value="YONETICI" ${(u.role || '').toUpperCase() === 'YONETICI' ? 'selected' : ''}>Yönetici (YONETICI)</option>
-            <option value="ADMIN" ${(u.role || '').toUpperCase() === 'ADMIN' ? 'selected' : ''}>Sistem Yöneticisi (ADMIN)</option>
-          </select>
-        ` : ''}
+        <select onchange="changeUserRole(${u.id}, this.value)" class="px-2 py-1 text-[11px] border border-slate-300 rounded-lg font-semibold bg-white text-slate-700 focus:outline-none">
+          <option value="TEKNISYEN" ${(u.role || '').toUpperCase() === 'TEKNISYEN' ? 'selected' : ''}>Bakımcı (TEKNISYEN)</option>
+          <option value="YONETICI" ${(u.role || '').toUpperCase() === 'YONETICI' ? 'selected' : ''}>Yönetici (YONETICI)</option>
+          <option value="ADMIN" ${(u.role || '').toUpperCase() === 'ADMIN' ? 'selected' : ''}>Sistem Yöneticisi (ADMIN)</option>
+        </select>
         <button type="button" onclick="resetUserPin(${u.id}, '${u.username}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition">
           Şifre Sıfırla
         </button>
-        ${currentUser && u.id !== currentUser.id ? `
-          <button type="button" onclick="toggleUserActive(${u.id}, ${!u.is_active})" class="px-2.5 py-1 ${u.is_active ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'} rounded-lg font-semibold transition">
-            ${u.is_active ? 'Pasife Al' : 'Aktif Et'}
-          </button>
-          <button type="button" onclick="deleteUserAccount(${u.id}, '${u.username.replace(/'/g, "\\'")}', '${(u.full_name || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold transition flex items-center gap-1" title="Kullanıcıyı Tamamen Sil">
-            <span>Sil</span>
-          </button>
-        ` : ''}
+        <button type="button" onclick="toggleUserActive(${u.id}, ${!u.is_active})" class="px-2.5 py-1 ${u.is_active ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'} rounded-lg font-semibold transition">
+          ${u.is_active ? 'Pasife Al' : 'Aktif Et'}
+        </button>
+        <button type="button" onclick="deleteUserAccount(${u.id}, '${u.username.replace(/'/g, "\\'")}', '${(u.full_name || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold transition flex items-center gap-1" title="Kullanıcıyı Tamamen Sil">
+          <span>Sil</span>
+        </button>
       </div>
     </div>
   `).join("");
