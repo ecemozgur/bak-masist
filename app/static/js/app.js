@@ -919,15 +919,13 @@ async function loadMachines() {
     renderMachinesGrid(allMachines);
     updateFormDatalists();
 
-    // Chatbot ve Excel dropdown'larını güncelle
+    // Chatbot dropdown'unu güncelle
     const chatSelect = document.getElementById("chatTargetMachine");
-    const excelSelect = document.getElementById("excelFilterMachine");
     const optionsHtml = '<option value="">Tüm Makineler</option>' + allMachines.map(m => `
       <option value="${m.code}">${m.code} - ${m.name}</option>
     `).join("");
 
     if (chatSelect) chatSelect.innerHTML = optionsHtml;
-    if (excelSelect) excelSelect.innerHTML = optionsHtml;
   } catch (e) {
     console.error("Makineler yüklenemedi:", e);
   }
@@ -1708,7 +1706,7 @@ async function onDoneJobsDateChanged() {
   const dateInput = document.getElementById("excelFilterDate");
   if (!dateInput) return;
   const dateVal = dateInput.value || formatDateToIso(new Date());
-  const machineFilter = document.getElementById("excelFilterMachine")?.value || "";
+  const machineFilter = (document.getElementById("excelFilterMachine")?.value || "").trim().toUpperCase();
 
   const titleEl = document.getElementById("doneJobsTableTitle");
   const badgeEl = document.getElementById("doneJobsBadgeInfo");
@@ -1730,7 +1728,10 @@ async function onDoneJobsDateChanged() {
 
     let records = data.records || [];
     if (machineFilter) {
-      records = records.filter(r => (r.area || "").toUpperCase().includes(machineFilter.toUpperCase()));
+      records = records.filter(r =>
+        (r.area || "").toUpperCase().includes(machineFilter) ||
+        (r.description || "").toUpperCase().includes(machineFilter)
+      );
     }
 
     const totalMinutes = records.reduce((sum, r) => sum + (parseInt(r.time_spent) || 0), 0);
