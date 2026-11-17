@@ -56,6 +56,20 @@ function formatDateToIso(d) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function syncHandoverShiftToCurrentTime(dateObj = new Date()) {
+  const hour = dateObj.getHours();
+  let defaultHandoverShift = "08:00 - 16:00";
+  if (hour >= 16 && hour < 24) {
+    defaultHandoverShift = "16:00 - 24:00";
+  } else if (hour >= 0 && hour < 8) {
+    defaultHandoverShift = "24:00 - 08:00";
+  }
+  const handoverShiftSelect = document.getElementById("handoverShift");
+  if (handoverShiftSelect) {
+    handoverShiftSelect.value = defaultHandoverShift;
+  }
+}
+
 function initDateAndShift() {
   const now = new Date();
   setFormDate(now);
@@ -73,6 +87,8 @@ function initDateAndShift() {
   if (shiftSelect) {
     shiftSelect.value = defaultShift;
   }
+
+  syncHandoverShiftToCurrentTime(now);
 
   const opNameInput = document.getElementById("formOperatorName");
   if (opNameInput && !opNameInput.value && currentUser) {
@@ -248,6 +264,7 @@ function switchTab(tabId) {
   }
 
   if (tabId === "handover") {
+    syncHandoverShiftToCurrentTime();
     loadHandoverTasks();
   }
 
