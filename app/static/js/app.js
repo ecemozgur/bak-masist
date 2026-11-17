@@ -1696,7 +1696,10 @@ async function onDoneJobsDateChanged() {
               ${t.notes ? `<span class="block text-[11px] text-slate-500 italic mt-0.5">Not: ${escapeHtml(t.notes)}</span>` : ''}
             </td>
             <td class="p-2.5 text-center font-bold text-blue-900">${escapeHtml(t.assigned_person)}</td>
-            <td class="p-2.5 text-center font-semibold text-purple-700">${escapeHtml(t.status)}</td>
+            <td class="p-2.5 text-center font-semibold text-purple-700">
+              ${escapeHtml(t.status)}
+              ${t.status_updated_by ? `<span class="block text-[10px] text-slate-500 font-bold mt-0.5">(${escapeHtml(t.status_updated_by)})</span>` : ''}
+            </td>
           </tr>
         `).join("");
       }
@@ -2633,18 +2636,26 @@ function renderHandoverShiftList(containerId, badgeId, tasks, shiftName) {
       <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/50">
         <div class="flex items-center gap-1.5 text-[11px] text-slate-600 font-medium">
           <i data-lucide="user" class="w-3.5 h-3.5 text-slate-400"></i>
-          <span>${escapeHtml(t.assigned_person)}</span>
+          <span>Sorumlu: <b>${escapeHtml(t.assigned_person)}</b></span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5">
           ${getStatusBadge(t.status)}
-          <select onchange="updateHandoverStatus(${t.id}, this.value)" class="text-[10px] font-semibold bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-600 focus:outline-none">
-            <option value="Devam Ediyor" ${t.status === 'Devam Ediyor' ? 'selected' : ''}>Devam Ediyor</option>
-            <option value="Tamamlandı" ${t.status === 'Tamamlandı' ? 'selected' : ''}>Tamamlandı</option>
-            <option value="Malzeme Bekleniyor" ${t.status === 'Malzeme Bekleniyor' ? 'selected' : ''}>Malzeme Bekleniyor</option>
-            <option value="Sonraki Vardiyaya Devir" ${t.status === 'Sonraki Vardiyaya Devir' ? 'selected' : ''}>Sonraki Vardiyaya Devir</option>
-            <option value="İptal" ${t.status === 'İptal' ? 'selected' : ''}>İptal</option>
-          </select>
+          ${t.status_updated_by ? `<span class="px-2 py-0.5 bg-slate-200/80 text-slate-700 rounded-md text-[10px] font-bold" title="Son Durumu Değiştiren Kişi">✍️ ${escapeHtml(t.status_updated_by)}</span>` : ''}
         </div>
+      </div>
+
+      <div class="pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5">
+        <select id="ho-status-${t.id}" onchange="onHandoverStatusSelectChange(${t.id})" class="text-[11px] font-semibold bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          <option value="Devam Ediyor" ${t.status === 'Devam Ediyor' ? 'selected' : ''}>⏳ Devam Ediyor</option>
+          <option value="Tamamlandı" ${t.status === 'Tamamlandı' ? 'selected' : ''}>✅ Tamamlandı</option>
+          <option value="Malzeme Bekleniyor" ${t.status === 'Malzeme Bekleniyor' ? 'selected' : ''}>📦 Malzeme Bekleniyor</option>
+          <option value="Sonraki Vardiyaya Devir" ${t.status === 'Sonraki Vardiyaya Devir' ? 'selected' : ''}>🔄 Sonraki Vardiyaya Devir</option>
+          <option value="İptal" ${t.status === 'İptal' ? 'selected' : ''}>❌ İptal</option>
+        </select>
+        <input type="text" id="ho-updater-${t.id}" list="operatorDatalist" value="${escapeHtml(t.status_updated_by || '')}" oninput="clearInputError(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();submitHandoverStatusUpdate(${t.id});}" placeholder="Durumu Değiştiren Kişi *" class="flex-1 min-w-[140px] text-[11px] font-semibold bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 uppercase focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        <button type="button" onclick="submitHandoverStatusUpdate(${t.id})" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition shrink-0">
+          Durumu Kaydet
+        </button>
       </div>
     </div>
   `).join("");
@@ -2702,14 +2713,41 @@ async function handleHandoverSubmit(e) {
   }
 }
 
-async function updateHandoverStatus(taskId, newStatus) {
+function onHandoverStatusSelectChange(taskId) {
+  const updaterInput = document.getElementById(`ho-updater-${taskId}`);
+  if (updaterInput) {
+    updaterInput.focus();
+    if (!updaterInput.value.trim()) {
+      setInputError(updaterInput, true);
+    }
+  }
+}
+
+async function submitHandoverStatusUpdate(taskId) {
+  const statusSelect = document.getElementById(`ho-status-${taskId}`);
+  const updaterInput = document.getElementById(`ho-updater-${taskId}`);
+  const newStatus = statusSelect ? statusSelect.value : "Devam Ediyor";
+  const updatedBy = updaterInput ? updaterInput.value.trim().toUpperCase() : "";
+
+  if (!updatedBy) {
+    if (updaterInput) {
+      setInputError(updaterInput, true);
+      updaterInput.focus();
+    }
+    alert("Son durumu güncellemek için lütfen 'Durumu Değiştiren Kişi' kutucuğuna isim yazınız!");
+    return;
+  }
+
   try {
     const res = await fetch(`/api/handover/${taskId}/status`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus })
+      body: JSON.stringify({ status: newStatus, updated_by: updatedBy })
     });
-    if (!res.ok) throw new Error("Durum güncellenemedi");
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Durum güncellenemedi");
+    }
     await loadHandoverTasks();
   } catch (err) {
     alert("Hata: " + err.message);

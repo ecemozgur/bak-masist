@@ -707,6 +707,7 @@ def add_handover_task(
         task_description=data.task_description.strip(),
         assigned_person=data.assigned_person.strip().upper(),
         status=data.status or "Devam Ediyor",
+        status_updated_by=data.status_updated_by.strip().upper() if data.status_updated_by and data.status_updated_by.strip() else None,
         notes=data.notes.strip() if data.notes else None
     )
     db.add(task)
@@ -721,11 +722,15 @@ def update_handover_status(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user)
 ):
-    """İş aktarım görevinin son durumunu günceller."""
+    """İş aktarım görevinin son durumunu ve durumu değiştiren kişiyi günceller."""
     task = db.query(HandoverTask).filter(HandoverTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="İş aktarım görevi bulunamadı.")
+    updater_name = (data.updated_by or "").strip().upper()
+    if not updater_name:
+        raise HTTPException(status_code=400, detail="Son durumu değiştiren kişinin ismi zorunludur.")
     task.status = data.status
+    task.status_updated_by = updater_name
     db.commit()
     db.refresh(task)
     return task

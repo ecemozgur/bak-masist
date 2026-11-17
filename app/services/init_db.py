@@ -1,11 +1,17 @@
 import os
 from datetime import datetime, timedelta
+from sqlalchemy import text
 from app.database import engine, Base, SessionLocal
 from app.models import User, Machine, MachineSubfolder, MaintenanceLog, HandoverTask
 from app.services.auth_service import hash_pin, is_pin_hashed
 
 def init_database():
     Base.metadata.create_all(bind=engine)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE handover_tasks ADD COLUMN status_updated_by VARCHAR(100)"))
+    except Exception:
+        pass
     db = SessionLocal()
 
     # İlk Admin hesabı var mı? (Diğer personeller Admin panelinden eklenir)

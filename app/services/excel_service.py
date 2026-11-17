@@ -605,9 +605,13 @@ class ExcelService:
         for group_tasks, base_col in shift_groups:
             for idx, task_obj in enumerate(group_tasks):
                 r_top = slot_start_rows[idx]
+                status_val = getattr(task_obj, "status", "Devam Ediyor") or "Devam Ediyor"
+                updated_by_val = (getattr(task_obj, "status_updated_by", "") or "").strip()
+                full_status_val = f"{status_val}\n({updated_by_val})" if updated_by_val else status_val
+
                 c_desc = ws.cell(r_top, base_col, value=_format_task_desc(task_obj))
                 c_pers = ws.cell(r_top, base_col + 1, value=getattr(task_obj, "assigned_person", ""))
-                c_stat = ws.cell(r_top, base_col + 2, value=getattr(task_obj, "status", "Devam Ediyor"))
+                c_stat = ws.cell(r_top, base_col + 2, value=full_status_val)
 
                 c_desc.font = desc_font
                 c_desc.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)

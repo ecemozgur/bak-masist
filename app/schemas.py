@@ -245,10 +245,12 @@ class HandoverTaskCreate(BaseModel):
     task_description: str
     assigned_person: str
     status: Optional[str] = "Devam Ediyor"
+    status_updated_by: Optional[str] = None
     notes: Optional[str] = None
 
 class HandoverTaskUpdateStatus(BaseModel):
     status: str
+    updated_by: str
 
 class HandoverTaskResponse(BaseModel):
     id: int
@@ -257,6 +259,7 @@ class HandoverTaskResponse(BaseModel):
     task_description: str
     assigned_person: str
     status: str
+    status_updated_by: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
 

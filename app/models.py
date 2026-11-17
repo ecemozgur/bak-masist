@@ -134,6 +134,7 @@ class HandoverTask(Base):
     task_description = Column(Text, nullable=False) # Yapılacak / Devredilen İş
     assigned_person = Column(String(100), nullable=False) # Sorumlu Kişi / Operatör
     status = Column(String(50), default="Devam Ediyor")   # Devam Ediyor, Tamamlandı, Malzeme Bekleniyor, Sonraki Vardiyaya Devir
+    status_updated_by = Column(String(100), nullable=True) # Son durumu değiştiren kişi
     notes = Column(Text, nullable=True)             # Ek Notlar
     created_at = Column(DateTime, default=now_tr)
 
