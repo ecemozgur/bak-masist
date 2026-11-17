@@ -1989,8 +1989,11 @@ function renderAdminUsersList() {
           Şifre Sıfırla
         </button>
         ${currentUser && u.id !== currentUser.id ? `
-          <button type="button" onclick="toggleUserActive(${u.id}, ${!u.is_active})" class="px-2.5 py-1 ${u.is_active ? 'bg-rose-50 hover:bg-rose-100 text-rose-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'} rounded-lg font-semibold transition">
+          <button type="button" onclick="toggleUserActive(${u.id}, ${!u.is_active})" class="px-2.5 py-1 ${u.is_active ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'} rounded-lg font-semibold transition">
             ${u.is_active ? 'Pasife Al' : 'Aktif Et'}
+          </button>
+          <button type="button" onclick="deleteUserAccount(${u.id}, '${u.username.replace(/'/g, "\\'")}', '${(u.full_name || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold transition flex items-center gap-1" title="Kullanıcıyı Tamamen Sil">
+            <span>Sil</span>
           </button>
         ` : ''}
       </div>
@@ -2094,9 +2097,30 @@ async function toggleUserActive(userId, newState) {
     });
     if (res.ok) {
       await loadUsers();
+      showAdminFormFeedback(newState ? "✅ Kullanıcı hesabı aktif edildi." : "⚠️ Kullanıcı hesabı pasife alındı.", false);
     } else {
       const err = await res.json().catch(() => ({}));
       alert(`Hata: ${err.detail || "İşlem başarısız."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
+}
+
+async function deleteUserAccount(userId, sicilNo, fullName) {
+  if (!confirm(`"${fullName} (${sicilNo})" adlı kullanıcıyı sistemden tamamen silmek istediğinize emin misiniz?\n\nBu işlem geri alınamaz.`)) {
+    return;
+  }
+  try {
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: "DELETE"
+    });
+    if (res.ok) {
+      await loadUsers();
+      showAdminFormFeedback(`🗑️ ${fullName} (${sicilNo}) sistemden tamamen silindi.`, false);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Kullanıcı silinemedi."}`);
     }
   } catch (e) {
     alert("Sunucuya bağlanılamadı.");

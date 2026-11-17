@@ -14,7 +14,7 @@ from app.config import (
     DORUK_ENABLED, SESSION_COOKIE_NAME, SESSION_TTL_DAYS, now_tr
 )
 from app.database import get_db, engine, Base
-from app.models import User, Machine, MachineSubfolder, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask
+from app.models import User, Machine, MachineSubfolder, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask, PeriodicCheck
 from app.schemas import (
     UserLogin, UserCreate, UserUpdate, UserResponse, MachineResponse, MachineCreate,
     MachineSubfolderCreate, MachineSubfolderResponse,
@@ -209,6 +209,27 @@ def admin_update_user(
     db.commit()
     db.refresh(user)
     return user
+
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı!")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Kendi aktif hesabınızı silemezsiniz.")
+
+    # Geçmiş bakım, sohbet ve periyodik kontrol kayıtlarının silinmemesi için user_id bağını boşa çıkar
+    db.query(MaintenanceLog).filter(MaintenanceLog.user_id == user.id).update({MaintenanceLog.user_id: None})
+    db.query(ChatMessage).filter(ChatMessage.user_id == user.id).update({ChatMessage.user_id: None})
+    db.query(PeriodicCheck).filter(PeriodicCheck.user_id == user.id).update({PeriodicCheck.user_id: None})
+
+    db.delete(user)
+    db.commit()
+    return {"status": "ok", "message": "Kullanıcı tamamen silindi."}
 
 # ----------------- MAKİNE YÖNETİMİ & DİJİTAL KLASÖRLER -----------------
 
