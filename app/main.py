@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
@@ -88,19 +89,23 @@ async def serve_sw():
 
 @app.post("/api/auth/login", response_model=UserResponse)
 def login(creds: UserLogin, request: Request, response: Response, db: Session = Depends(get_db)):
-    sicil_no = creds.username.strip()
-    if not sicil_no or not creds.pin_code:
+    login_identifier = creds.username.strip()
+    if not login_identifier or not creds.pin_code:
         raise HTTPException(status_code=400, detail="Kullanıcı ve şifre zorunludur.")
 
     client_ip = request.client.host if request.client else "unknown"
-    check_rate_limit(client_ip, sicil_no)
+    check_rate_limit(client_ip, login_identifier)
 
-    user = db.query(User).filter(func.lower(User.username) == sicil_no.lower()).first()
+    # Kullanıcı sicil no (username) VEYA ad soyad (full_name) ile giriş yapabilir
+    user = db.query(User).filter(
+        (func.lower(User.username) == login_identifier.lower()) |
+        (func.lower(User.full_name) == login_identifier.lower())
+    ).first()
     if not user or not user.is_active or not verify_pin(creds.pin_code, user.pin_code):
-        record_failed_attempt(client_ip, sicil_no)
+        record_failed_attempt(client_ip, login_identifier)
         raise HTTPException(status_code=401, detail="Kullanıcı veya şifre hatalı!")
 
-    clear_failed_attempts(client_ip, sicil_no)
+    clear_failed_attempts(client_ip, login_identifier)
 
     # Eski düz metin PIN varsa girişte hash'e yükselt
     if not is_pin_hashed(user.pin_code):
@@ -145,21 +150,49 @@ def get_users(
 
 # ----------------- ADMIN KULLANICI YÖNETİMİ -----------------
 
+def generate_unique_username(full_name: str, db: Session) -> str:
+    """
+    Sicil no girilmediğinde personelin adından otomatik ve benzersiz
+    bir kullanıcı adı/sicil üretir (örn: ahmet.yilmaz).
+    """
+    clean_name = full_name.lower().strip()
+    tr_map = str.maketrans("çğıöşü", "cgiosu")
+    clean_name = clean_name.translate(tr_map)
+    parts = [re.sub(r'[^a-z0-9]', '', p) for p in clean_name.split() if p]
+    if len(parts) >= 2:
+        base = f"{parts[0]}.{parts[-1]}"
+    elif len(parts) == 1:
+        base = parts[0]
+    else:
+        base = "personel"
+
+    candidate = base
+    counter = 1
+    while db.query(User).filter(func.lower(User.username) == candidate.lower()).first():
+        counter += 1
+        candidate = f"{base}{counter}"
+    return candidate
+
 @app.post("/api/admin/users", response_model=UserResponse)
 def admin_create_user(
     data: UserCreate,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    sicil_no = data.username.strip()
-    if not sicil_no or not data.full_name.strip() or not data.pin_code.strip():
-        raise HTTPException(status_code=400, detail="Sicil no, ad soyad ve şifre zorunludur.")
+    sicil_no = (data.username or "").strip()
+    full_name = data.full_name.strip()
+    if not full_name or not data.pin_code.strip():
+        raise HTTPException(status_code=400, detail="Ad soyad ve şifre zorunludur.")
 
     validate_password_strength(data.pin_code.strip())
 
-    existing = db.query(User).filter(func.lower(User.username) == sicil_no.lower()).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Bu sicil numarası zaten kayıtlı!")
+    if sicil_no:
+        existing = db.query(User).filter(func.lower(User.username) == sicil_no.lower()).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Bu sicil numarası zaten kayıtlı!")
+    else:
+        # Sicil no belirtilmediyse otomatik benzersiz kullanıcı adı/sicil üret
+        sicil_no = generate_unique_username(full_name, db)
 
     role = data.role.upper().strip()
     if role == "YÖNETİCİ":
@@ -169,7 +202,7 @@ def admin_create_user(
 
     user = User(
         username=sicil_no,
-        full_name=data.full_name.strip(),
+        full_name=full_name,
         role=role,
         department=data.department.strip() or "Mekanik Bakım",
         pin_code=hash_pin(data.pin_code.strip()),
@@ -191,6 +224,13 @@ def admin_update_user(
     if not user:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı!")
 
+    if data.username is not None and data.username.strip():
+        new_username = data.username.strip()
+        existing = db.query(User).filter(func.lower(User.username) == new_username.lower(), User.id != user.id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Bu sicil numarası başka bir personelde kayıtlı!")
+        user.username = new_username
+
     if data.full_name is not None:
         user.full_name = data.full_name.strip()
     if data.department is not None:
@@ -211,6 +251,10 @@ def admin_update_user(
         clean_pw = data.pin_code.strip()
         validate_password_strength(clean_pw)
         user.pin_code = hash_pin(clean_pw)
+
+    db.commit()
+    db.refresh(user)
+    return user
 
     db.commit()
     db.refresh(user)

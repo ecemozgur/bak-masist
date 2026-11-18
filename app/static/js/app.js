@@ -2280,8 +2280,9 @@ async function submitAdminCreateUser(event) {
   [sicilEl, nameEl, pinEl].forEach(el => setInputError(el, false));
   showAdminFormFeedback("");
 
+  const sicilVal = sicilEl.value.trim();
   const payload = {
-    username: sicilEl.value.trim(),
+    username: sicilVal || null,
     full_name: nameEl.value.trim(),
     department: deptEl.value.trim() || "Mekanik Bakım",
     role: roleEl.value,
@@ -2302,14 +2303,16 @@ async function submitAdminCreateUser(event) {
     } else {
       const err = await res.json().catch(() => ({}));
       const detail = err.detail || "Kullanıcı eklenemedi.";
-      if (detail.toLowerCase().includes("sicil")) {
-        setInputError(sicilEl, true);
-        sicilEl.focus();
-      } else if (detail.toLowerCase().includes("şifre")) {
+      if (detail.toLowerCase().includes("şifre")) {
         setInputError(pinEl, true);
         pinEl.focus();
-      } else {
+      } else if (detail.toLowerCase().includes("ad soyad")) {
+        setInputError(nameEl, true);
+        nameEl.focus();
+      } else if (detail.toLowerCase().includes("sicil")) {
         setInputError(sicilEl, true);
+        sicilEl.focus();
+      } else {
         setInputError(nameEl, true);
         setInputError(pinEl, true);
       }

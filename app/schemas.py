@@ -8,13 +8,14 @@ class UserLogin(BaseModel):
     remember_me: bool = True
 
 class UserCreate(BaseModel):
-    username: str
+    username: Optional[str] = None
     full_name: str
     role: str = "TEKNISYEN"
     department: str = "Mekanik Bakım"
     pin_code: str
 
 class UserUpdate(BaseModel):
+    username: Optional[str] = None
     full_name: Optional[str] = None
     role: Optional[str] = None
     department: Optional[str] = None
