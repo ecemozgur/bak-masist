@@ -5,7 +5,7 @@ from pydantic import BaseModel
 class UserLogin(BaseModel):
     username: str
     pin_code: str
-    remember_me: bool = True
+    remember_me: bool = False
 
 class UserCreate(BaseModel):
     username: Optional[str] = None

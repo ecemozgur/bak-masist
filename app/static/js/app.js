@@ -1915,8 +1915,8 @@ function downloadFilteredExcel() {
 // ----------------- KİMLİK DOĞRULAMA & ADMIN YÖNETİMİ -----------------
 let allUsers = [];
 
-// ----------------- HAREKETSİZLİK TAKİBİ (45 DK OTURUM KAPATMA - ADMİNLER HARİÇ) -----------------
-const INACTIVITY_TIMEOUT_MS = 45 * 60 * 1000; // 45 dakika (2.700.000 ms)
+// ----------------- HAREKETSİZLİK TAKİBİ (20 DK OTURUM KAPATMA - ADMİNLER HARİÇ) -----------------
+const INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000; // 20 dakika (1.200.000 ms)
 let lastUserActivityTimestamp = Date.now();
 let lastThrottledActivityRecord = 0;
 let inactivityTrackerInitialized = false;
@@ -1943,7 +1943,7 @@ function getLastUserActivityTimestamp() {
 }
 
 function checkUserInactivity() {
-  // Oturum açık değilse veya kullanıcı ADMIN ise 45 dk kuralı işletilmez (Adminler hariç)
+  // Oturum açık değilse veya kullanıcı ADMIN ise 20 dk kuralı işletilmez (Adminler hariç)
   if (!currentUser || isAdminUser(currentUser)) {
     return false;
   }
@@ -1953,7 +1953,7 @@ function checkUserInactivity() {
 
   if (elapsed >= INACTIVITY_TIMEOUT_MS) {
     console.warn(`[Güvenlik] Kullanıcı ${Math.round(elapsed / 60000)} dakikadır hareketsiz kaldı. Oturum kapatılıyor.`);
-    logoutUser("45 dakika boyunca işlem yapılmadığı için oturumunuz otomatik olarak kapatıldı.", false);
+    logoutUser("20 dakika boyunca işlem yapılmadığı için oturumunuz otomatik olarak kapatıldı.", false);
     return true;
   }
   return false;
@@ -2084,12 +2084,12 @@ async function checkAuthAndInit() {
     const res = await fetch("/api/auth/me");
     if (res.ok) {
       const user = await res.json();
-      // Admin değilse ve son aktivite 45 dakikayı geçmişse oturumu kapat
+      // Admin değilse ve son aktivite 20 dakikayı geçmişse oturumu kapat
       if (!isAdminUser(user)) {
         const lastActive = getLastUserActivityTimestamp();
         if (lastActive && (Date.now() - lastActive >= INACTIVITY_TIMEOUT_MS)) {
-          console.warn("[Güvenlik] Son aktivite 45 dakikayı aştığı için oturum kapatıldı.");
-          await logoutUser("45 dakika boyunca işlem yapılmadığı için oturumunuz otomatik olarak kapatıldı.", false);
+          console.warn("[Güvenlik] Son aktivite 20 dakikayı aştığı için oturum kapatıldı.");
+          await logoutUser("20 dakika boyunca işlem yapılmadığı için oturumunuz otomatik olarak kapatıldı.", false);
           return;
         }
       }
@@ -2109,7 +2109,6 @@ async function submitLogin(event) {
   event.preventDefault();
   const sicilNo = document.getElementById("loginSicilNo")?.value.trim() || "";
   const pinCode = document.getElementById("loginPin")?.value.trim() || "";
-  const rememberMe = !!document.getElementById("loginRememberMe")?.checked;
   const errEl = document.getElementById("loginError");
   const btn = document.getElementById("btnLoginSubmit");
 
@@ -2123,7 +2122,7 @@ async function submitLogin(event) {
       body: JSON.stringify({
         username: sicilNo,
         pin_code: pinCode,
-        remember_me: rememberMe
+        remember_me: false
       })
     });
 
