@@ -2053,9 +2053,7 @@ function applyAuthenticatedUser(user) {
   currentUser = user;
   recordUserActivity();
   const activeUserNameEl = document.getElementById("activeUserName");
-  const activeUserRoleEl = document.getElementById("activeUserRole");
   if (activeUserNameEl) activeUserNameEl.innerText = user.full_name;
-  if (activeUserRoleEl) activeUserRoleEl.innerText = `(${user.username} • ${user.role})`;
 
   const btnAdmin = document.getElementById("btnAdminUsers");
   if (btnAdmin) {
@@ -2154,6 +2152,8 @@ async function logoutUser(reason = "", isInputError = false) {
     console.warn(e);
   }
   currentUser = null;
+  const activeUserNameEl = document.getElementById("activeUserName");
+  if (activeUserNameEl) activeUserNameEl.innerText = "-";
   const btnAdmin = document.getElementById("btnAdminUsers");
   if (btnAdmin) btnAdmin.classList.add("hidden");
   const btnNewMachine = document.getElementById("btnNewMachineFolder");
