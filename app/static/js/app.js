@@ -670,12 +670,8 @@ async function submitServerExcelLog(event) {
       const data = await res.json();
       alert(`✅ BAŞARIYLA KAYDEDİLDİ!\n\n📁 Dosya: ${data.file_name}\n📄 Sayfa: ${data.sheet_name}\n📍 Satır: ${data.row}\n⏰ Saat: ${data.timestamp}\n\nKayıt güncel Excel dosyasına işlendi.`);
       
-      // Formu temizle ve yeni satıra hazırla
-      const jobDescEl = document.getElementById("formJobDescription");
-      if (jobDescEl) jobDescEl.value = "";
-      const voiceLiveOutEl = document.getElementById("voiceLiveOutput");
-      if (voiceLiveOutEl) voiceLiveOutEl.innerText = "";
-      updatePreviewRow();
+      // Formu temizle ve yeni satıra hazırla (bina, hat no, makine kodu, kriter vb. defaulta döner)
+      clearMaintenanceForm();
       
       // Sunucu tablosunu ve kayıtları güncelle
       loadServerExcelStatus(dateVal);
@@ -2549,6 +2545,9 @@ function clearMaintenanceForm() {
   const timeInput = document.getElementById("formTimeSpent");
   if (timeInput) timeInput.value = "30";
 
+  const voiceLiveOutEl = document.getElementById("voiceLiveOutput");
+  if (voiceLiveOutEl) voiceLiveOutEl.innerText = "";
+
   // Operatör ismini koru
   const savedOp = localStorage.getItem("saved_operator_name") || (currentUser ? currentUser.full_name : "");
   const opInput = document.getElementById("formOperatorName");
@@ -2556,6 +2555,7 @@ function clearMaintenanceForm() {
     opInput.value = savedOp;
   }
 
+  updateFormDatalists();
   updatePreviewRow();
 }
 
