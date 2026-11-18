@@ -18,6 +18,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Oturum kontrolü yap; giriş yapılmışsa uygulamayı başlat
   checkAuthAndInit();
 
+  // 45 dk hareketsizlik takibini başlat (adminler hariç)
+  initInactivityTracker();
+
   // Service Worker Temizleme (Önbellek sorunlarını önlemek için)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(registrations => {
@@ -1912,6 +1915,80 @@ function downloadFilteredExcel() {
 // ----------------- KİMLİK DOĞRULAMA & ADMIN YÖNETİMİ -----------------
 let allUsers = [];
 
+// ----------------- HAREKETSİZLİK TAKİBİ (45 DK OTURUM KAPATMA - ADMİNLER HARİÇ) -----------------
+const INACTIVITY_TIMEOUT_MS = 45 * 60 * 1000; // 45 dakika (2.700.000 ms)
+let lastUserActivityTimestamp = Date.now();
+let lastThrottledActivityRecord = 0;
+let inactivityTrackerInitialized = false;
+
+function recordUserActivity() {
+  const now = Date.now();
+  if (now - lastThrottledActivityRecord > 2000) { // 2 saniyede bir sınırla
+    lastThrottledActivityRecord = now;
+    lastUserActivityTimestamp = now;
+    try {
+      localStorage.setItem("last_user_activity", String(now));
+    } catch (e) {}
+  }
+}
+
+function getLastUserActivityTimestamp() {
+  try {
+    const stored = parseInt(localStorage.getItem("last_user_activity") || "0", 10);
+    if (stored && stored > lastUserActivityTimestamp) {
+      lastUserActivityTimestamp = stored;
+    }
+  } catch (e) {}
+  return lastUserActivityTimestamp;
+}
+
+function checkUserInactivity() {
+  // Oturum açık değilse veya kullanıcı ADMIN ise 45 dk kuralı işletilmez (Adminler hariç)
+  if (!currentUser || isAdminUser(currentUser)) {
+    return false;
+  }
+
+  const lastActive = getLastUserActivityTimestamp();
+  const elapsed = Date.now() - lastActive;
+
+  if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+    console.warn(`[Güvenlik] Kullanıcı ${Math.round(elapsed / 60000)} dakikadır hareketsiz kaldı. Oturum kapatılıyor.`);
+    logoutUser("45 dakika boyunca işlem yapılmadığı için oturumunuz otomatik olarak kapatıldı.", false);
+    return true;
+  }
+  return false;
+}
+
+function initInactivityTracker() {
+  if (inactivityTrackerInitialized) return;
+  inactivityTrackerInitialized = true;
+
+  const activityEvents = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click", "input"];
+  activityEvents.forEach(evt => {
+    window.addEventListener(evt, () => {
+      if (checkUserInactivity()) return;
+      recordUserActivity();
+    }, { passive: true });
+  });
+
+  window.addEventListener("focus", () => {
+    if (checkUserInactivity()) return;
+    recordUserActivity();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      if (checkUserInactivity()) return;
+      recordUserActivity();
+    }
+  });
+
+  recordUserActivity();
+
+  // Her 15 saniyede bir periyodik kontrol
+  setInterval(checkUserInactivity, 15000);
+}
+
 function isAdminUser(user) {
   return user && (user.role || "").toUpperCase() === "ADMIN";
 }
@@ -1936,7 +2013,7 @@ function clearInputError(el) {
   setInputError(el, false);
 }
 
-function showLoginOverlay(errorMsg = "") {
+function showLoginOverlay(errorMsg = "", isInputError = true) {
   const overlay = document.getElementById("loginOverlay");
   const errEl = document.getElementById("loginError");
   const sicilInput = document.getElementById("loginSicilNo");
@@ -1947,8 +2024,13 @@ function showLoginOverlay(errorMsg = "") {
     if (errorMsg) {
       errEl.textContent = errorMsg;
       errEl.classList.remove("hidden");
-      setInputError(sicilInput, true);
-      setInputError(pinInput, true);
+      if (isInputError) {
+        setInputError(sicilInput, true);
+        setInputError(pinInput, true);
+      } else {
+        setInputError(sicilInput, false);
+        setInputError(pinInput, false);
+      }
     } else {
       errEl.classList.add("hidden");
       setInputError(sicilInput, false);
@@ -1969,6 +2051,7 @@ function hideLoginOverlay() {
 
 function applyAuthenticatedUser(user) {
   currentUser = user;
+  recordUserActivity();
   const activeUserNameEl = document.getElementById("activeUserName");
   const activeUserRoleEl = document.getElementById("activeUserRole");
   if (activeUserNameEl) activeUserNameEl.innerText = user.full_name;
@@ -2003,6 +2086,15 @@ async function checkAuthAndInit() {
     const res = await fetch("/api/auth/me");
     if (res.ok) {
       const user = await res.json();
+      // Admin değilse ve son aktivite 45 dakikayı geçmişse oturumu kapat
+      if (!isAdminUser(user)) {
+        const lastActive = getLastUserActivityTimestamp();
+        if (lastActive && (Date.now() - lastActive >= INACTIVITY_TIMEOUT_MS)) {
+          console.warn("[Güvenlik] Son aktivite 45 dakikayı aştığı için oturum kapatıldı.");
+          await logoutUser("45 dakika boyunca işlem yapılmadığı için oturumunuz otomatik olarak kapatıldı.", false);
+          return;
+        }
+      }
       hideLoginOverlay();
       applyAuthenticatedUser(user);
       startAppAfterAuth();
@@ -2055,7 +2147,7 @@ async function submitLogin(event) {
   }
 }
 
-async function logoutUser() {
+async function logoutUser(reason = "", isInputError = false) {
   try {
     await fetch("/api/auth/logout", { method: "POST" });
   } catch (e) {
@@ -2066,7 +2158,7 @@ async function logoutUser() {
   if (btnAdmin) btnAdmin.classList.add("hidden");
   const btnNewMachine = document.getElementById("btnNewMachineFolder");
   if (btnNewMachine) btnNewMachine.classList.add("hidden");
-  showLoginOverlay();
+  showLoginOverlay(reason, isInputError);
 }
 
 async function loadUsers() {
