@@ -241,6 +241,24 @@ class ExcelService:
             logger.warning(f"clean_daily_file_sheets uyarı: {e}")
 
     @classmethod
+    def get_shift_by_time(cls, dt: Optional[datetime] = None) -> str:
+        """
+        Fabrika vardiya devir saatlerine (08:15, 16:15, 00:15) göre vardiya adını döner:
+        08:15 - 16:15 -> "08.00-16.00" (1. Vardiya)
+        16:15 - 00:15 -> "16.00-24.00" (2. Vardiya)
+        00:15 - 08:15 -> "24.00 - 08.00" (3. Vardiya)
+        """
+        if dt is None:
+            dt = now_tr()
+        mins = dt.hour * 60 + dt.minute
+        if 495 <= mins < 975:
+            return "08.00-16.00"
+        elif mins >= 975 or mins < 15:
+            return "16.00-24.00"
+        else:
+            return "24.00 - 08.00"
+
+    @classmethod
     def _find_sheet(cls, wb: openpyxl.Workbook, shift_str: str) -> Any:
         """Vardiya metnine göre en uygun sayfayı bulur."""
         clean_shift = (shift_str or "").replace(":", ".").replace(" ", "")
@@ -278,11 +296,13 @@ class ExcelService:
         if not dt:
             dt = now_tr()
 
+        effective_shift = shift if shift else cls.get_shift_by_time(dt)
+
         with _excel_lock:
             file_path = cls.ensure_daily_excel_file(dt)
             wb = openpyxl.load_workbook(str(file_path))
 
-            ws = cls._find_sheet(wb, shift or "08.00-16.00")
+            ws = cls._find_sheet(wb, effective_shift)
 
             # C sütununu kapsayan birleşik hücre aralıklarını tara ve ilk boş slotu bul
             c_ranges = sorted(

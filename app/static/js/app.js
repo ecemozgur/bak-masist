@@ -49,6 +49,8 @@ function startAppAfterAuth() {
 // ----------------- TARİH & VARDİYA AYARLARI -----------------
 const TURKISH_DAYS_ARRAY = ["PAZAR", "PAZARTESİ", "SALI", "ÇARŞAMBA", "PERŞEMBE", "CUMA", "CUMARTESİ"];
 
+let userManuallyChangedShift = false;
+
 function formatDateToIso(d) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -56,39 +58,88 @@ function formatDateToIso(d) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function syncHandoverShiftToCurrentTime(dateObj = new Date()) {
-  const hour = dateObj.getHours();
-  let defaultHandoverShift = "08:00 - 16:00";
-  if (hour >= 16 && hour < 24) {
-    defaultHandoverShift = "16:00 - 24:00";
-  } else if (hour >= 0 && hour < 8) {
-    defaultHandoverShift = "24:00 - 08:00";
+function getShiftValueByTime(dateObj = new Date()) {
+  const mins = dateObj.getHours() * 60 + dateObj.getMinutes();
+  // 08:15 (495 dk) ile 16:15 (975 dk) arası -> 08.00-16.00 (1. Vardiya)
+  if (mins >= 495 && mins < 975) {
+    return "08.00-16.00";
   }
-  const handoverShiftSelect = document.getElementById("handoverShift");
-  if (handoverShiftSelect) {
-    handoverShiftSelect.value = defaultHandoverShift;
+  // 16:15 (975 dk) ile 00:15 (15 dk) arası -> 16.00-24.00 (2. Vardiya)
+  else if (mins >= 975 || mins < 15) {
+    return "16.00-24.00";
+  }
+  // 00:15 (15 dk) ile 08:15 (495 dk) arası -> 24.00 - 08.00 (3. Vardiya)
+  else {
+    return "24.00 - 08.00";
   }
 }
+
+function getHandoverShiftValueByTime(dateObj = new Date()) {
+  const mins = dateObj.getHours() * 60 + dateObj.getMinutes();
+  if (mins >= 495 && mins < 975) {
+    return "08:00 - 16:00";
+  } else if (mins >= 975 || mins < 15) {
+    return "16:00 - 24:00";
+  } else {
+    return "24:00 - 08:00";
+  }
+}
+
+function getDorukShiftValueByTime(dateObj = new Date()) {
+  const mins = dateObj.getHours() * 60 + dateObj.getMinutes();
+  if (mins >= 495 && mins < 975) {
+    return "08:00-16:00";
+  } else if (mins >= 975 || mins < 15) {
+    return "16:00-24:00";
+  } else {
+    return "24:00-08:00";
+  }
+}
+
+function syncHandoverShiftToCurrentTime(dateObj = new Date()) {
+  const handoverShiftSelect = document.getElementById("handoverShift");
+  if (handoverShiftSelect) {
+    handoverShiftSelect.value = getHandoverShiftValueByTime(dateObj);
+  }
+}
+
+function autoSyncShiftWithCurrentTime(force = false) {
+  const now = new Date();
+  if (!userManuallyChangedShift || force) {
+    const shiftSelect = document.getElementById("formShift");
+    const targetShift = getShiftValueByTime(now);
+    if (shiftSelect && shiftSelect.value !== targetShift) {
+      shiftSelect.value = targetShift;
+      updatePreviewRow();
+    }
+  }
+
+  syncHandoverShiftToCurrentTime(now);
+
+  const dorukShift = document.getElementById("dorukFormShift");
+  if (dorukShift) {
+    dorukShift.value = getDorukShiftValueByTime(now);
+  }
+}
+
+// Sayfa arka planda açık kalsa bile vardiya devir saatlerinde (08:15, 16:15, 00:15) otomatik geçiş sağla
+setInterval(() => {
+  autoSyncShiftWithCurrentTime(false);
+}, 15000);
 
 function initDateAndShift() {
   const now = new Date();
   setFormDate(now);
 
-  // Vardiya Otomatik Seçimi
-  const hour = now.getHours();
-  let defaultShift = "08.00-16.00";
-  if (hour >= 16 && hour < 24) {
-    defaultShift = "16.00-24.00";
-  } else if (hour >= 0 && hour < 8) {
-    defaultShift = "24.00 - 08.00";
-  }
+  autoSyncShiftWithCurrentTime(true);
 
   const shiftSelect = document.getElementById("formShift");
-  if (shiftSelect) {
-    shiftSelect.value = defaultShift;
+  if (shiftSelect && !shiftSelect.hasAttribute("data-shift-listener")) {
+    shiftSelect.setAttribute("data-shift-listener", "true");
+    shiftSelect.addEventListener("change", () => {
+      userManuallyChangedShift = true;
+    });
   }
-
-  syncHandoverShiftToCurrentTime(now);
 
   const opNameInput = document.getElementById("formOperatorName");
   if (opNameInput && !opNameInput.value && currentUser) {
@@ -642,6 +693,12 @@ async function submitServerExcelLog(event) {
   const nowObj = new Date();
   const clientTime = `${String(nowObj.getHours()).padStart(2, "0")}:${String(nowObj.getMinutes()).padStart(2, "0")}`;
 
+  // Kullanıcı vardiyayı elle değiştirmediyse, güncel saate göre vardiyayı kesinleştir
+  if (!userManuallyChangedShift) {
+    autoSyncShiftWithCurrentTime(true);
+  }
+  const effectiveShift = document.getElementById("formShift")?.value || getShiftValueByTime(nowObj);
+
   const payload = {
     area_line: combinedLineMach,
     building: building,
@@ -651,7 +708,8 @@ async function submitServerExcelLog(event) {
     criterion_no: critNo,
     time_spent_minutes: timeSpent,
     operator_name: operatorName,
-    shift: shift,
+    shift: effectiveShift,
+    shift_manually_selected: userManuallyChangedShift,
     date_str: dateVal,
     client_time: clientTime,
     include_timestamp: includeTs,
@@ -2547,6 +2605,10 @@ function clearMaintenanceForm() {
 
   const voiceLiveOutEl = document.getElementById("voiceLiveOutput");
   if (voiceLiveOutEl) voiceLiveOutEl.innerText = "";
+
+  // Vardiya seçimini default/otomatik durumuna döndür ve saate senkronize et
+  userManuallyChangedShift = false;
+  autoSyncShiftWithCurrentTime(true);
 
   // Operatör ismini koru
   const savedOp = localStorage.getItem("saved_operator_name") || (currentUser ? currentUser.full_name : "");

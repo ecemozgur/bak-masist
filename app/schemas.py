@@ -139,6 +139,7 @@ class ServerExcelAppendRequest(BaseModel):
     time_spent_minutes: int
     operator_name: str
     shift: Optional[str] = None
+    shift_manually_selected: Optional[bool] = False
     date_str: Optional[str] = None
     client_time: Optional[str] = None
     include_timestamp: bool = True

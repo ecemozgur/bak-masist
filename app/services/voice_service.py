@@ -42,13 +42,8 @@ class VoiceService:
 
     @classmethod
     def get_current_shift(cls) -> str:
-        hour = datetime.now().hour
-        if 8 <= hour < 16:
-            return "08.00-16.00"
-        elif 16 <= hour < 24:
-            return "16.00-24.00"
-        else:
-            return "24.00 - 08.00"
+        from app.services.excel_service import ExcelService
+        return ExcelService.get_shift_by_time()
 
     @classmethod
     def parse_speech_transcript(cls, transcript: str, known_machines: List[str] = None) -> VoiceParseResponse:

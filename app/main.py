@@ -583,6 +583,12 @@ def append_to_server_excel(
         else:
             entry_dt = now
 
+        # Kullanıcı elle vardiya seçmediyse, kesme saatlerine göre (08:15, 16:15, 00:15) doğru sayfaya yaz
+        if not getattr(data, "shift_manually_selected", False):
+            effective_shift = ExcelService.get_shift_by_time(entry_dt)
+        else:
+            effective_shift = data.shift or ExcelService.get_shift_by_time(entry_dt)
+
         # 1. Server Excel'ine yaz
         excel_res = ExcelService.append_to_server_excel(
             area_line=data.area_line,
@@ -590,7 +596,7 @@ def append_to_server_excel(
             criterion_no=data.criterion_no,
             time_spent_minutes=data.time_spent_minutes,
             operator_name=data.operator_name,
-            shift=data.shift,
+            shift=effective_shift,
             dt=entry_dt,
             include_timestamp=data.include_timestamp
         )
@@ -612,7 +618,7 @@ def append_to_server_excel(
             machine_id=machine.id,
             user_id=current_user.id,
             date_str=entry_dt.strftime("%Y-%m-%d"),
-            shift=data.shift or "08.00-16.00",
+            shift=effective_shift,
             failure_description=data.job_description,
             action_taken=data.job_description,
             downtime_minutes=data.time_spent_minutes,
