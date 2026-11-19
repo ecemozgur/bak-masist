@@ -205,7 +205,10 @@ function setTodayDate() {
   setFormDate(now);
   updatePreviewRow();
   const dateInput = document.getElementById("formDateInput");
-  if (dateInput) loadServerExcelStatus(dateInput.value);
+  if (dateInput) {
+    loadServerExcelStatus(dateInput.value);
+    loadRecentLogs(dateInput.value);
+  }
 }
 
 function onDateChanged() {
@@ -228,6 +231,7 @@ function onDateChanged() {
 
   updatePreviewRow();
   loadServerExcelStatus(dateInput.value);
+  loadRecentLogs(dateInput.value);
 }
 
 // ----------------- KRİTER LİSTESİ YÜKLEME -----------------
@@ -736,7 +740,7 @@ async function submitServerExcelLog(event) {
       
       // Sunucu tablosunu ve kayıtları güncelle
       loadServerExcelStatus(dateVal);
-      loadRecentLogs();
+      loadRecentLogs(dateVal);
     } else {
       const err = await res.json();
       alert(`Hata: ${err.detail || 'Server Excel dosyasına yazılamadı!'}`);
@@ -765,6 +769,7 @@ function getCurrentShiftCutoffInfo(dateObj = new Date()) {
   // 00:15 = 15 dk
   if (currentMinutes >= 495 && currentMinutes < 975) {
     return {
+      shiftNumber: 1,
       shiftName: "1. Vardiya (08:15 - 16:15)",
       cutoffTimeStr: "08:15",
       cutoffMinutes: 495,
@@ -773,6 +778,7 @@ function getCurrentShiftCutoffInfo(dateObj = new Date()) {
     };
   } else if (currentMinutes >= 975) {
     return {
+      shiftNumber: 2,
       shiftName: "2. Vardiya (16:15 - 00:15)",
       cutoffTimeStr: "16:15",
       cutoffMinutes: 975,
@@ -781,6 +787,7 @@ function getCurrentShiftCutoffInfo(dateObj = new Date()) {
     };
   } else if (currentMinutes >= 15 && currentMinutes < 495) {
     return {
+      shiftNumber: 3,
       shiftName: "3. Vardiya (00:15 - 08:15)",
       cutoffTimeStr: "00:15",
       cutoffMinutes: 15,
@@ -790,6 +797,7 @@ function getCurrentShiftCutoffInfo(dateObj = new Date()) {
   } else {
     // 00:00 - 00:15 arası
     return {
+      shiftNumber: 2,
       shiftName: "2. Vardiya Devir (16:15 - 00:15)",
       cutoffTimeStr: "16:15",
       cutoffMinutes: 975,
@@ -802,18 +810,19 @@ function getCurrentShiftCutoffInfo(dateObj = new Date()) {
 function isRecordInActiveShift(record, shiftInfo, isToday) {
   if (!isToday) return true; // Başka bir gün seçilmişse tüm kayıtları göster
 
-  // Sayfa kontrolü: Kayıt o vardiyanın sheet'inde mi?
-  if (record.sheet && !record.sheet.includes(shiftInfo.sheetKey)) {
-    return false;
-  }
+  // Sayfa kontrolü: Sayfa adı ile aktif vardiya eşleşmesi
+  const sheet = (record.sheet || "").trim();
+  if (shiftInfo.shiftNumber === 1 && !sheet.startsWith("08")) return false;
+  if (shiftInfo.shiftNumber === 2 && !sheet.startsWith("16")) return false;
+  if (shiftInfo.shiftNumber === 3 && !(sheet.startsWith("24") || sheet.startsWith("00"))) return false;
 
   // Saat kontrolü
   let recMinutes = null;
-  const timeStr = record.time_str || (record.description ? (record.description.match(/\[(\d{1,2}):(\d{2})\]/) || [])[1] : null);
+  const timeStr = record.time_str || (record.description ? (record.description.match(/\[(\d{1,2}:\d{2})\]/) || [])[1] : null);
   if (timeStr) {
     const parts = timeStr.split(":");
     if (parts.length === 2) {
-      recMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      recMinutes = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
     }
   }
 
@@ -933,17 +942,67 @@ function renderServerExcelTable(dateStr = null) {
 }
 
 // ----------------- SON KAYITLAR LİSTESİ -----------------
-async function loadRecentLogs() {
+let showAllRecentLogs = false;
+
+async function loadRecentLogs(dateStr = null, toggleShowAll = null) {
   try {
-    const res = await fetch("/api/logs?limit=20");
+    if (toggleShowAll !== null) {
+      showAllRecentLogs = toggleShowAll;
+    }
+
+    const dateInput = document.getElementById("formDateInput");
+    const selectedDate = dateStr || dateInput?.value || formatDateToIso(new Date());
+    const now = new Date();
+    const todayIso = formatDateToIso(now);
+    const isToday = selectedDate === todayIso;
+
+    // Başlık güncelleme
+    const titleEl = document.getElementById("recentLogsTitle");
+    if (titleEl) {
+      if (showAllRecentLogs) {
+        titleEl.innerText = "Son Girilen Bakım Kayıtları (Tümü)";
+      } else if (isToday) {
+        titleEl.innerText = "Bugün Girilen Bakım Kayıtları";
+      } else {
+        const parts = selectedDate.split("-");
+        const formattedDate = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : selectedDate;
+        titleEl.innerText = `${formattedDate} Tarihinde Girilen Bakım Kayıtları`;
+      }
+    }
+
+    let url = "/api/logs?limit=50";
+    if (!showAllRecentLogs && selectedDate) {
+      url += `&date_str=${encodeURIComponent(selectedDate)}`;
+    }
+
+    const res = await fetch(url);
+    if (!res.ok) return;
     const logs = await res.json();
     const container = document.getElementById("recentLogsList");
     if (!container) return;
 
     if (logs.length === 0) {
-      container.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">Henüz arıza kaydı bulunmuyor.</p>`;
+      if (!showAllRecentLogs) {
+        const dateLabel = isToday ? "Bugün" : `${selectedDate} tarihinde`;
+        container.innerHTML = `
+          <div class="py-6 text-center text-slate-400">
+            <p class="font-semibold text-slate-600">${dateLabel} henüz bakım kaydı girilmedi.</p>
+            <p class="text-[11px] text-slate-400 mt-1">Yeni bir arıza veya bakım kaydettiğinizde burada listelenecektir.</p>
+            <button type="button" onclick="loadRecentLogs(null, true)" class="mt-2.5 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold">
+              Tüm geçmiş kayıtları göster
+            </button>
+          </div>
+        `;
+      } else {
+        container.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">Henüz arıza kaydı bulunmuyor.</p>`;
+      }
+      if (window.lucide) lucide.createIcons();
       return;
     }
+
+    const toggleBtnHtml = !showAllRecentLogs
+      ? `<div class="pt-3 text-right"><button type="button" onclick="loadRecentLogs(null, true)" class="text-xs text-blue-600 hover:underline font-semibold">Tüm geçmiş kayıtları göster (${logs.length} adet gösteriliyor)</button></div>`
+      : `<div class="pt-3 text-right"><button type="button" onclick="loadRecentLogs(null, false)" class="text-xs text-blue-600 hover:underline font-semibold">Sadece ${isToday ? 'bugünü' : selectedDate + ' tarihini'} göster</button></div>`;
 
     container.innerHTML = logs.map(l => `
       <div class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -956,9 +1015,10 @@ async function loadRecentLogs() {
           <p class="text-xs text-slate-600"><b class="text-slate-700">Müdahale:</b> ${l.action_taken}</p>
           <div class="flex items-center space-x-3 text-[11px] text-slate-400">
             <span>⏱️ ${l.downtime_minutes} dk duruş</span>
-            <span>🔧 Parça: ${l.parts_replaced}</span>
-            <span>👤 ${l.user_name}</span>
+            <span>🔧 Parça: ${l.parts_replaced || '-'}</span>
+            <span>👤 ${l.user_name || '-'}</span>
             <span>📅 ${l.date_str}</span>
+            ${l.shift ? `<span>🕒 ${l.shift}</span>` : ""}
           </div>
         </div>
 
@@ -975,7 +1035,7 @@ async function loadRecentLogs() {
         </div>
         ` : ""}
       </div>
-    `).join("");
+    `).join("") + toggleBtnHtml;
 
     if (window.lucide) lucide.createIcons();
   } catch (e) {
