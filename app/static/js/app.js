@@ -2876,11 +2876,10 @@ function escapeHtml(str) {
 
 async function loadHandoverTasks() {
   const dateInput = document.getElementById("handoverDateFilter");
-  if (!dateInput) return;
-  let dateStr = dateInput.value;
+  let dateStr = dateInput ? dateInput.value : "";
   if (!dateStr) {
     const today = new Date().toISOString().split("T")[0];
-    dateInput.value = today;
+    if (dateInput) dateInput.value = today;
     dateStr = today;
   }
 
