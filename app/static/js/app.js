@@ -1617,28 +1617,33 @@ function renderMachinePeriodicSheet() {
         <td class="border border-slate-300 px-1.5 py-1.5 text-center font-bold text-slate-700">${escapeHtml(String(row.no ?? (rIdx + 1)))}</td>
         <td class="border border-slate-300 px-2 py-1.5 text-slate-900 font-medium whitespace-pre-line leading-snug">
           ${escapeHtml(row.parameter || '')}
-          ${isNumeric ? '<span class="ml-1 inline-block px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[9px] font-bold">NUMERİK</span>' : ''}
+          ${isNumeric ? '<span class="ml-1 inline-block px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[9px] font-bold">DEĞER</span>' : ''}
         </td>
         <td class="border border-slate-300 px-1 py-1.5 text-center font-bold text-slate-600 whitespace-nowrap">${escapeHtml(row.period || '')}</td>
-        ${months.map(m => {
-          const val = rowMonths[m] || "";
-          if (isNumeric) {
-            return `
-              <td class="border border-slate-300 p-1 bg-amber-50/30">
-                <input type="text" inputmode="decimal" value="${escapeHtml(val)}" oninput="updatePeriodicValueCell(${rIdx}, '${m}', this.value)" placeholder="Değer" class="w-full px-1 py-1 text-[11px] text-center border border-amber-300 rounded bg-white font-bold text-slate-900 focus:ring-1 focus:ring-amber-500 focus:outline-none">
-              </td>
-            `;
-          }
-          const btnStyle = val === "✓"
-            ? "bg-emerald-100 text-emerald-800 border-emerald-400"
-            : (val === "✗"
-              ? "bg-rose-100 text-rose-700 border-rose-400"
-              : "bg-white hover:bg-slate-100 text-slate-400 border-slate-200");
+        ${months.map((m, mIdx) => {
+          const val = String(rowMonths[m] ?? "");
+          const isCustomMode = (val !== "" && val !== "✓" && val !== "✗") || (row._customCells && row._customCells[m]);
+          const selectVal = isCustomMode ? "__CUSTOM__" : val;
+          const selectStyle = selectVal === "✓"
+            ? "bg-emerald-100 text-emerald-800 border-emerald-400 font-bold"
+            : (selectVal === "✗"
+              ? "bg-rose-100 text-rose-700 border-rose-400 font-bold"
+              : (selectVal === "__CUSTOM__"
+                ? "bg-amber-50 text-amber-900 border-amber-400 font-bold"
+                : "bg-white text-slate-600 border-slate-300"));
           return `
-            <td class="border border-slate-300 p-1 text-center">
-              <button type="button" onclick="togglePeriodicCheckCell(${rIdx}, '${m}')" class="w-full h-7 rounded border font-extrabold text-sm flex items-center justify-center transition active:scale-95 ${btnStyle}" title="Tıklayın: ✓ / ✗ / Boş">
-                ${escapeHtml(val || "·")}
-              </button>
+            <td class="border border-slate-300 p-1 align-top">
+              <div class="flex flex-col gap-1">
+                <select onchange="onPeriodicCellSelectChange(${rIdx}, '${m}', this.value, 'pcell-${rIdx}-${mIdx}')" class="w-full px-1 py-1 text-[10px] text-center rounded border focus:ring-1 focus:ring-indigo-500 focus:outline-none ${selectStyle}">
+                  <option value="" ${selectVal === "" ? "selected" : ""}>-</option>
+                  <option value="✓" ${selectVal === "✓" ? "selected" : ""}>✓ OK</option>
+                  <option value="✗" ${selectVal === "✗" ? "selected" : ""}>✗ NOK</option>
+                  <option value="__CUSTOM__" ${selectVal === "__CUSTOM__" ? "selected" : ""}>✎ Değer</option>
+                </select>
+                ${isCustomMode ? `
+                  <input id="pcell-${rIdx}-${mIdx}" type="text" value="${escapeHtml(val === "✓" || val === "✗" ? "" : val)}" oninput="updatePeriodicValueCell(${rIdx}, '${m}', this.value)" placeholder="Değer gir..." class="w-full px-1 py-1 text-[10px] text-center border border-amber-400 rounded bg-white font-bold text-slate-900 focus:ring-1 focus:ring-amber-500 focus:outline-none">
+                ` : ""}
+              </div>
             </td>
           `;
         }).join("")}
@@ -1681,13 +1686,24 @@ function renderMachinePeriodicSheet() {
   if (window.lucide) lucide.createIcons();
 }
 
-function togglePeriodicCheckCell(rowIdx, monthName) {
+function onPeriodicCellSelectChange(rowIdx, monthName, selectedVal, inputId) {
   if (!activePeriodicSheet || !activePeriodicSheet.rows[rowIdx]) return;
   const row = activePeriodicSheet.rows[rowIdx];
   if (!row.months) row.months = {};
-  const cur = row.months[monthName] || "";
-  row.months[monthName] = cur === "" ? "✓" : (cur === "✓" ? "✗" : "");
-  renderMachinePeriodicSheet();
+  if (!row._customCells) row._customCells = {};
+
+  if (selectedVal === "__CUSTOM__") {
+    row._customCells[monthName] = true;
+    if (row.months[monthName] === "✓" || row.months[monthName] === "✗") {
+      row.months[monthName] = "";
+    }
+    renderMachinePeriodicSheet();
+    setTimeout(() => document.getElementById(inputId)?.focus(), 0);
+  } else {
+    row._customCells[monthName] = false;
+    row.months[monthName] = selectedVal;
+    renderMachinePeriodicSheet();
+  }
 }
 
 function updatePeriodicValueCell(rowIdx, monthName, val) {
@@ -1765,7 +1781,7 @@ async function saveMachinePeriodicSheet() {
         revision: activePeriodicSheet.revision || "Rev. 9.10.2026",
         title: activePeriodicSheet.title,
         dates: activePeriodicSheet.dates || {},
-        rows: activePeriodicSheet.rows || [],
+        rows: (activePeriodicSheet.rows || []).map(({ _customCells, ...cleanRow }) => cleanRow),
         performed_by: activePeriodicSheet.performed_by || {},
         approved_by: activePeriodicSheet.approved_by || {}
       })
