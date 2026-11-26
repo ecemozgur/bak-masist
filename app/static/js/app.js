@@ -1216,7 +1216,7 @@ function renderMachinesGrid(machines) {
                     <span class="text-slate-400 font-normal">🔧 ${m.log_count || 0} kayıt</span>
                   </div>
                   <div class="flex items-center gap-1.5 pt-1">
-                    <button type="button" onclick="openMachineFolder('${m.code}')" class="flex-1 py-1.5 px-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition shadow-2xs active:scale-95">
+                    <button type="button" data-machine-code="${escapeHtml(m.code)}" onclick="openMachineFolder(this.dataset.machineCode)" class="flex-1 py-1.5 px-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition shadow-2xs active:scale-95">
                       <i data-lucide="folder" class="w-3.5 h-3.5 text-blue-600"></i>
                       <span>Klasör</span>
                     </button>
@@ -1340,10 +1340,14 @@ let isAddingScheduleRow = false;
 async function openMachineFolder(machineCode) {
   try {
     activeFolderMachineCode = machineCode;
-    const res = await fetch(`/api/machines/${machineCode}/folder`);
-    const data = await res.json();
+    const res = await fetch(`/api/machines/${encodeURIComponent(machineCode)}/folder`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.machine) {
+      alert(`Klasör açılamadı: ${data.detail || res.statusText || "Sunucu hatası"}`);
+      return;
+    }
 
-    activeFolderMachineInfo = data.machine || null;
+    activeFolderMachineInfo = data.machine;
     activeScheduleRows = data.maintenance_rows || [];
 
     document.getElementById("modalMachineCode").innerText = data.machine.code;
@@ -1374,7 +1378,7 @@ async function openMachineFolder(machineCode) {
         subList.innerHTML = `<div class="col-span-full text-xs text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 text-center">Bu makine dosyasına henüz ek klasör tanımlanmamış.</div>`;
       } else {
         subList.innerHTML = subfolders.map(sf => `
-          <div class="bg-blue-50/50 hover:bg-blue-50 p-3 rounded-xl border border-blue-200/80 flex items-start justify-between gap-2 transition">
+          <div onclick="openMachineScheduleModal()" class="cursor-pointer bg-blue-50/50 hover:bg-blue-50 p-3 rounded-xl border border-blue-200/80 hover:border-blue-400 flex items-start justify-between gap-2 transition">
             <div class="flex items-start gap-2.5 min-w-0">
               <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
                 <i data-lucide="folder" class="w-4 h-4"></i>
@@ -1386,7 +1390,7 @@ async function openMachineFolder(machineCode) {
               </div>
             </div>
             ${canManageMachineFolders(currentUser) ? `
-              <button type="button" onclick="deleteMachineSubfolder(${sf.id})" class="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition shrink-0" title="Klasörü Sil">
+              <button type="button" onclick="event.stopPropagation(); deleteMachineSubfolder(${sf.id})" class="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition shrink-0" title="Klasörü Sil">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               </button>
             ` : ''}
@@ -1422,6 +1426,7 @@ async function openMachineFolder(machineCode) {
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     console.error("Klasör detayı açılamadı:", e);
+    alert("Klasör detayı açılamadı: " + (e?.message || e));
   }
 }
 

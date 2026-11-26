@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 from sqlalchemy import text
 from app.database import engine, Base, SessionLocal
-from app.models import User, Machine, MachineSubfolder, MaintenanceLog, HandoverTask
+from app.models import User, Machine, MachineSubfolder, MachineMaintenanceRow, MaintenanceLog, HandoverTask
 from app.services.auth_service import hash_pin, is_pin_hashed
 
 def init_database():

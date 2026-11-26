@@ -332,6 +332,15 @@ def create_machine(
     db.refresh(machine)
     return machine
 
+def _find_machine_by_code(db: Session, machine_code: str) -> Optional[Machine]:
+    raw = (machine_code or "").strip()
+    if not raw:
+        return None
+    machine = db.query(Machine).filter(Machine.code == raw).first()
+    if machine:
+        return machine
+    return db.query(Machine).filter(func.upper(Machine.code) == raw.upper()).first()
+
 @app.get("/api/machines/{machine_code}/folder")
 def get_machine_folder(
     machine_code: str,
@@ -342,7 +351,7 @@ def get_machine_folder(
     Belirli bir makinenin dijital klasörü:
     Künyesi, alt klasörleri, geçmiş arızaları, değişen parçalar, duruş istatistikleri ve Doruk kayıtları.
     """
-    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    machine = _find_machine_by_code(db, machine_code)
     if not machine:
         raise HTTPException(status_code=404, detail="Makine bulunamadı!")
     
@@ -477,7 +486,7 @@ def get_machine_maintenance_rows(
     db: Session = Depends(get_db)
 ):
     """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesi satırlarını listeler."""
-    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    machine = _find_machine_by_code(db, machine_code)
     if not machine:
         raise HTTPException(status_code=404, detail="Makine bulunamadı!")
     return db.query(MachineMaintenanceRow).filter(
@@ -492,7 +501,7 @@ def create_machine_maintenance_row(
     db: Session = Depends(get_db)
 ):
     """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesine yeni satır ekler."""
-    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    machine = _find_machine_by_code(db, machine_code)
     if not machine:
         raise HTTPException(status_code=404, detail="Makine bulunamadı!")
 
@@ -524,7 +533,7 @@ def update_machine_maintenance_row(
     db: Session = Depends(get_db)
 ):
     """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesindeki bir satırı günceller."""
-    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    machine = _find_machine_by_code(db, machine_code)
     if not machine:
         raise HTTPException(status_code=404, detail="Makine bulunamadı!")
     row = db.query(MachineMaintenanceRow).filter(
@@ -554,7 +563,7 @@ def delete_machine_maintenance_row(
     db: Session = Depends(get_db)
 ):
     """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesinden bir satırı siler."""
-    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    machine = _find_machine_by_code(db, machine_code)
     if not machine:
         raise HTTPException(status_code=404, detail="Makine bulunamadı!")
     row = db.query(MachineMaintenanceRow).filter(
