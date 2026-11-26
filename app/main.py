@@ -15,10 +15,11 @@ from app.config import (
     DORUK_ENABLED, SESSION_COOKIE_NAME, SESSION_TTL_DAYS, now_tr
 )
 from app.database import get_db, engine, Base
-from app.models import User, Machine, MachineSubfolder, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask, PeriodicCheck
+from app.models import User, Machine, MachineSubfolder, MachineMaintenanceRow, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask, PeriodicCheck
 from app.schemas import (
     UserLogin, UserCreate, UserUpdate, UserResponse, MachineResponse, MachineCreate,
     MachineSubfolderCreate, MachineSubfolderResponse,
+    MachineMaintenanceRowCreate, MachineMaintenanceRowUpdate, MachineMaintenanceRowResponse,
     MaintenanceLogCreate, MaintenanceLogResponse,
     VoiceParseRequest, VoiceParseResponse,
     ChatQueryRequest, ChatQueryResponse, DorukPullRequest,
@@ -353,6 +354,10 @@ def get_machine_folder(
         MachineSubfolder.machine_id == machine.id
     ).order_by(MachineSubfolder.id.desc()).all()
 
+    maintenance_rows = db.query(MachineMaintenanceRow).filter(
+        MachineMaintenanceRow.machine_id == machine.id
+    ).order_by(MachineMaintenanceRow.id.asc()).all()
+
     formatted_subfolders = [
         {
             "id": sf.id,
@@ -362,6 +367,25 @@ def get_machine_folder(
             "created_at": sf.created_at.strftime("%d.%m.%Y %H:%M") if sf.created_at else "-"
         }
         for sf in subfolders
+    ]
+
+    formatted_maintenance_rows = [
+        {
+            "id": r.id,
+            "machine_id": r.machine_id,
+            "date_str": r.date_str or "",
+            "fault_work_title": r.fault_work_title or "",
+            "work_description": r.work_description or "",
+            "replaced_part": r.replaced_part or "",
+            "mold_shot_count": r.mold_shot_count or "",
+            "notification_no": r.notification_no or "",
+            "used_material": r.used_material or "",
+            "performed_by": r.performed_by or "",
+            "approved_by": r.approved_by or "",
+            "created_by": r.created_by or "-",
+            "created_at": r.created_at.strftime("%d.%m.%Y %H:%M") if r.created_at else "-"
+        }
+        for r in maintenance_rows
     ]
 
     formatted_logs = []
@@ -393,6 +417,8 @@ def get_machine_folder(
             "total_downtime": machine.total_downtime_minutes
         },
         "subfolders": formatted_subfolders,
+        "maintenance_rows": formatted_maintenance_rows,
+        "maintenance_rows_count": len(formatted_maintenance_rows),
         "total_interventions": len(formatted_logs),
         "history": formatted_logs
     }
@@ -441,6 +467,103 @@ def delete_machine_subfolder(
     if not subfolder:
         raise HTTPException(status_code=404, detail="Klasör bulunamadı!")
     db.delete(subfolder)
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/api/machines/{machine_code}/maintenance-rows", response_model=List[MachineMaintenanceRowResponse])
+def get_machine_maintenance_rows(
+    machine_code: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesi satırlarını listeler."""
+    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    return db.query(MachineMaintenanceRow).filter(
+        MachineMaintenanceRow.machine_id == machine.id
+    ).order_by(MachineMaintenanceRow.id.asc()).all()
+
+@app.post("/api/machines/{machine_code}/maintenance-rows", response_model=MachineMaintenanceRowResponse)
+def create_machine_maintenance_row(
+    machine_code: str,
+    data: MachineMaintenanceRowCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesine yeni satır ekler."""
+    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+
+    date_val = (data.date_str or "").strip() or now_tr().strftime("%d.%m.%Y")
+    row = MachineMaintenanceRow(
+        machine_id=machine.id,
+        date_str=date_val,
+        fault_work_title=(data.fault_work_title or "").strip(),
+        work_description=(data.work_description or "").strip(),
+        replaced_part=(data.replaced_part or "").strip(),
+        mold_shot_count=(data.mold_shot_count or "").strip(),
+        notification_no=(data.notification_no or "").strip(),
+        used_material=(data.used_material or "").strip(),
+        performed_by=(data.performed_by or "").strip() or current_user.full_name,
+        approved_by=(data.approved_by or "").strip(),
+        created_by=current_user.full_name
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+@app.put("/api/machines/{machine_code}/maintenance-rows/{row_id}", response_model=MachineMaintenanceRowResponse)
+def update_machine_maintenance_row(
+    machine_code: str,
+    row_id: int,
+    data: MachineMaintenanceRowUpdate,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesindeki bir satırı günceller."""
+    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    row = db.query(MachineMaintenanceRow).filter(
+        MachineMaintenanceRow.id == row_id,
+        MachineMaintenanceRow.machine_id == machine.id
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Çizelge satırı bulunamadı!")
+
+    for field in (
+        "date_str", "fault_work_title", "work_description", "replaced_part",
+        "mold_shot_count", "notification_no", "used_material", "performed_by", "approved_by"
+    ):
+        val = getattr(data, field)
+        if val is not None:
+            setattr(row, field, val.strip())
+
+    db.commit()
+    db.refresh(row)
+    return row
+
+@app.delete("/api/machines/{machine_code}/maintenance-rows/{row_id}")
+def delete_machine_maintenance_row(
+    machine_code: str,
+    row_id: int,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesinden bir satırı siler."""
+    machine = db.query(Machine).filter(Machine.code == machine_code.upper()).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    row = db.query(MachineMaintenanceRow).filter(
+        MachineMaintenanceRow.id == row_id,
+        MachineMaintenanceRow.machine_id == machine.id
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Çizelge satırı bulunamadı!")
+    db.delete(row)
     db.commit()
     return {"status": "ok"}
 
@@ -868,7 +991,7 @@ def append_to_doruk(data: DorukAppendRequest, db: Session = Depends(get_db)):
         res = DorukService.append_doruk_row(data, db)
         return res
     except Exception as e:
-        logger.error(f"Doruk satırı ekleme hatası: {e}")
+        logger.error(f"Doruk satırı ekleme hatası: {e}") # pyright: ignore[reportUndefinedVariable]
         raise HTTPException(status_code=500, detail=f"Doruk Keypet dosyasına yazılamadı: {str(e)}")
 
 @app.get("/api/doruk/rows", response_model=DorukRowsResponse)

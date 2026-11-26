@@ -36,6 +36,7 @@ class Machine(Base):
     logs = relationship("MaintenanceLog", back_populates="machine", cascade="all, delete-orphan")
     chats = relationship("ChatMessage", back_populates="machine")
     subfolders = relationship("MachineSubfolder", back_populates="machine", cascade="all, delete-orphan")
+    maintenance_rows = relationship("MachineMaintenanceRow", back_populates="machine", cascade="all, delete-orphan")
 
 class MachineSubfolder(Base):
     __tablename__ = "machine_subfolders"
@@ -48,6 +49,27 @@ class MachineSubfolder(Base):
     created_at = Column(DateTime, default=now_tr)
 
     machine = relationship("Machine", back_populates="subfolders")
+
+class MachineMaintenanceRow(Base):
+    """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesi satırları."""
+    __tablename__ = "machine_maintenance_rows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(Integer, ForeignKey("machines.id"), nullable=False, index=True)
+    date_str = Column(String(30), nullable=False, default="")              # TARİH
+    fault_work_title = Column(Text, nullable=False, default="")            # ARIZA VE YAPILAN İŞİN TANIMI
+    work_description = Column(Text, nullable=False, default="")            # YAPILAN İŞİN AÇIKLAMASI
+    replaced_part = Column(String(255), nullable=False, default="")        # DEĞİŞEN PARÇA
+    mold_shot_count = Column(String(100), nullable=False, default="")      # KALIP BASKI SAYISI
+    notification_no = Column(String(100), nullable=False, default="")      # ARIZA-KAIZEN BİLDİRİM NO
+    used_material = Column(String(255), nullable=False, default="")        # KULLANILAN A/S.DAHİLİ
+    performed_by = Column(String(120), nullable=False, default="")         # İŞİ YAPAN
+    approved_by = Column(String(120), nullable=False, default="")          # ONAY
+    created_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=now_tr)
+    updated_at = Column(DateTime, default=now_tr, onupdate=now_tr)
+
+    machine = relationship("Machine", back_populates="maintenance_rows")
 
 class MaintenanceLog(Base):
     __tablename__ = "maintenance_logs"

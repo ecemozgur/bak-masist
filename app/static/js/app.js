@@ -1332,6 +1332,10 @@ function updateFormDatalists() {
 
 // ----------------- MAKİNE KLASÖR DETAY MODALI -----------------
 let activeFolderMachineCode = null;
+let activeFolderMachineInfo = null;
+let activeScheduleRows = [];
+let editingScheduleRowId = null;
+let isAddingScheduleRow = false;
 
 async function openMachineFolder(machineCode) {
   try {
@@ -1339,10 +1343,18 @@ async function openMachineFolder(machineCode) {
     const res = await fetch(`/api/machines/${machineCode}/folder`);
     const data = await res.json();
 
+    activeFolderMachineInfo = data.machine || null;
+    activeScheduleRows = data.maintenance_rows || [];
+
     document.getElementById("modalMachineCode").innerText = data.machine.code;
     document.getElementById("modalMachineName").innerText = `${data.machine.name} (${data.machine.department} - ${data.machine.line})`;
     document.getElementById("modalTotalDowntime").innerText = `${data.machine.total_downtime} dk`;
     document.getElementById("modalInterventionCount").innerText = data.total_interventions;
+
+    const scheduleBadge = document.getElementById("modalScheduleRowCount");
+    if (scheduleBadge) {
+      scheduleBadge.innerText = `${activeScheduleRows.length} satır`;
+    }
 
     const btnAddSub = document.getElementById("btnAddMachineSubfolder");
     if (btnAddSub) {
@@ -1474,6 +1486,276 @@ async function deleteMachineSubfolder(folderId) {
 
 function closeMachineFolderModal() {
   document.getElementById("machineFolderModal").classList.add("hidden");
+  closeMachineScheduleModal();
+}
+
+// ----------------- FR-PE-0006 MAKİNA VE TEÇHİZAT ARIZA, BAKIM ÇİZELGESİ -----------------
+function getTodayTrDateDot() {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const yyyy = now.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+async function openMachineScheduleModal() {
+  if (!activeFolderMachineCode) return;
+  editingScheduleRowId = null;
+  isAddingScheduleRow = false;
+
+  const labelEl = document.getElementById("scheduleMachineLabel");
+  if (labelEl) {
+    labelEl.innerText = activeFolderMachineInfo
+      ? `${activeFolderMachineInfo.code} - ${activeFolderMachineInfo.name}`
+      : activeFolderMachineCode;
+  }
+
+  document.getElementById("machineScheduleModal").classList.remove("hidden");
+  await refreshMachineScheduleRows();
+}
+
+function closeMachineScheduleModal() {
+  const modal = document.getElementById("machineScheduleModal");
+  if (modal) modal.classList.add("hidden");
+  editingScheduleRowId = null;
+  isAddingScheduleRow = false;
+}
+
+async function refreshMachineScheduleRows() {
+  if (!activeFolderMachineCode) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/maintenance-rows`);
+    if (res.ok) {
+      activeScheduleRows = await res.json();
+    }
+  } catch (e) {
+    console.error("Çizelge satırları yüklenemedi:", e);
+  }
+  updateScheduleCountBadges();
+  renderMachineScheduleTable();
+}
+
+function updateScheduleCountBadges() {
+  const count = activeScheduleRows.length;
+  const folderBadge = document.getElementById("modalScheduleRowCount");
+  if (folderBadge) folderBadge.innerText = `${count} satır`;
+  const modalBadge = document.getElementById("scheduleTotalRowsBadge");
+  if (modalBadge) modalBadge.innerText = `${count} Kayıt`;
+}
+
+function renderMachineScheduleTable() {
+  const tbody = document.getElementById("machineScheduleTableBody");
+  if (!tbody) return;
+
+  let html = "";
+
+  if (activeScheduleRows.length === 0 && !isAddingScheduleRow) {
+    html = `
+      <tr>
+        <td colspan="10" class="py-10 text-center text-slate-400">
+          <div class="flex flex-col items-center gap-2">
+            <p class="text-xs font-medium">Bu makinenin FR-PE-0006 çizelgesinde henüz kayıtlı satır bulunmuyor.</p>
+            <button type="button" onclick="startAddScheduleRow()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>İlk Satırı Ekle</span>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  } else {
+    html = activeScheduleRows.map(row => {
+      if (editingScheduleRowId === row.id) {
+        return `
+          <tr class="bg-amber-50/70">
+            <td class="border border-slate-300 p-1.5"><input id="sched-edit-date" type="text" value="${escapeHtml(row.date_str || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white font-semibold"></td>
+            <td class="border border-slate-300 p-1.5"><textarea id="sched-edit-title" rows="2" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white resize-y">${escapeHtml(row.fault_work_title || '')}</textarea></td>
+            <td class="border border-slate-300 p-1.5"><textarea id="sched-edit-desc" rows="2" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white resize-y">${escapeHtml(row.work_description || '')}</textarea></td>
+            <td class="border border-slate-300 p-1.5"><input id="sched-edit-part" type="text" value="${escapeHtml(row.replaced_part || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
+            <td class="border border-slate-300 p-1.5"><input id="sched-edit-mold" type="text" value="${escapeHtml(row.mold_shot_count || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
+            <td class="border border-slate-300 p-1.5"><input id="sched-edit-notif" type="text" value="${escapeHtml(row.notification_no || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
+            <td class="border border-slate-300 p-1.5"><input id="sched-edit-mat" type="text" value="${escapeHtml(row.used_material || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
+            <td class="border border-slate-300 p-1.5"><input id="sched-edit-perf" type="text" value="${escapeHtml(row.performed_by || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
+            <td class="border border-slate-300 p-1.5"><input id="sched-edit-appr" type="text" value="${escapeHtml(row.approved_by || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
+            <td class="border border-slate-300 p-1.5 text-center whitespace-nowrap">
+              <div class="flex items-center justify-center gap-1">
+                <button type="button" onclick="saveEditedScheduleRow(${row.id})" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold" title="Kaydet">Kaydet</button>
+                <button type="button" onclick="cancelEditScheduleRow()" class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[11px] font-bold" title="İptal">İptal</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }
+
+      return `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="border border-slate-300 px-2 py-2 text-center font-semibold text-slate-800 whitespace-nowrap">${escapeHtml(row.date_str || '-')}</td>
+          <td class="border border-slate-300 px-2 py-2 text-slate-800 whitespace-pre-wrap break-words">${escapeHtml(row.fault_work_title || '')}</td>
+          <td class="border border-slate-300 px-2 py-2 text-slate-700 whitespace-pre-wrap break-words">${escapeHtml(row.work_description || '')}</td>
+          <td class="border border-slate-300 px-2 py-2 text-slate-700 break-words">${escapeHtml(row.replaced_part || '')}</td>
+          <td class="border border-slate-300 px-2 py-2 text-center text-slate-700">${escapeHtml(row.mold_shot_count || '')}</td>
+          <td class="border border-slate-300 px-2 py-2 text-center text-slate-700">${escapeHtml(row.notification_no || '')}</td>
+          <td class="border border-slate-300 px-2 py-2 text-slate-700 break-words">${escapeHtml(row.used_material || '')}</td>
+          <td class="border border-slate-300 px-2 py-2 text-center font-medium text-slate-800">${escapeHtml(row.performed_by || '')}</td>
+          <td class="border border-slate-300 px-2 py-2 text-center font-medium text-slate-700">${escapeHtml(row.approved_by || '')}</td>
+          <td class="border border-slate-300 px-1.5 py-2 text-center whitespace-nowrap">
+            <div class="flex items-center justify-center gap-1">
+              <button type="button" onclick="startEditScheduleRow(${row.id})" class="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Satırı Düzenle">
+                <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+              </button>
+              <button type="button" onclick="deleteScheduleRow(${row.id})" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Satırı Sil">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  if (isAddingScheduleRow) {
+    const defaultDate = getTodayTrDateDot();
+    const defaultUser = currentUser?.full_name || "";
+    html += `
+      <tr id="scheduleNewRowTr" class="bg-emerald-50/70">
+        <td class="border border-slate-300 p-1.5"><input id="sched-new-date" type="text" value="${escapeHtml(defaultDate)}" placeholder="GG.AA.YYYY" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white font-semibold"></td>
+        <td class="border border-slate-300 p-1.5"><textarea id="sched-new-title" rows="2" placeholder="Arıza / iş tanımı..." class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white resize-y"></textarea></td>
+        <td class="border border-slate-300 p-1.5"><textarea id="sched-new-desc" rows="2" placeholder="Yapılan işin açıklaması..." class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white resize-y"></textarea></td>
+        <td class="border border-slate-300 p-1.5"><input id="sched-new-part" type="text" placeholder="Değişen parça" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
+        <td class="border border-slate-300 p-1.5"><input id="sched-new-mold" type="text" placeholder="Baskı sayısı" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
+        <td class="border border-slate-300 p-1.5"><input id="sched-new-notif" type="text" placeholder="Bildirim no" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
+        <td class="border border-slate-300 p-1.5"><input id="sched-new-mat" type="text" placeholder="A/S.Dahili" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
+        <td class="border border-slate-300 p-1.5"><input id="sched-new-perf" type="text" value="${escapeHtml(defaultUser)}" placeholder="İşi yapan" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
+        <td class="border border-slate-300 p-1.5"><input id="sched-new-appr" type="text" placeholder="Onay" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
+        <td class="border border-slate-300 p-1.5 text-center whitespace-nowrap">
+          <div class="flex items-center justify-center gap-1">
+            <button type="button" onclick="saveNewScheduleRow()" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold">Kaydet</button>
+            <button type="button" onclick="cancelAddScheduleRow()" class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[11px] font-bold">Vazgeç</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  tbody.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
+
+  if (isAddingScheduleRow) {
+    const titleEl = document.getElementById("sched-new-title");
+    if (titleEl) {
+      titleEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      titleEl.focus();
+    }
+  }
+}
+
+function startAddScheduleRow() {
+  editingScheduleRowId = null;
+  isAddingScheduleRow = true;
+  renderMachineScheduleTable();
+}
+
+function cancelAddScheduleRow() {
+  isAddingScheduleRow = false;
+  renderMachineScheduleTable();
+}
+
+async function saveNewScheduleRow() {
+  if (!activeFolderMachineCode) return;
+  const payload = {
+    date_str: document.getElementById("sched-new-date")?.value.trim() || getTodayTrDateDot(),
+    fault_work_title: document.getElementById("sched-new-title")?.value.trim() || "",
+    work_description: document.getElementById("sched-new-desc")?.value.trim() || "",
+    replaced_part: document.getElementById("sched-new-part")?.value.trim() || "",
+    mold_shot_count: document.getElementById("sched-new-mold")?.value.trim() || "",
+    notification_no: document.getElementById("sched-new-notif")?.value.trim() || "",
+    used_material: document.getElementById("sched-new-mat")?.value.trim() || "",
+    performed_by: document.getElementById("sched-new-perf")?.value.trim() || "",
+    approved_by: document.getElementById("sched-new-appr")?.value.trim() || ""
+  };
+
+  if (!payload.fault_work_title && !payload.work_description) {
+    alert("Lütfen en azından 'Arıza ve Yapılan İşin Tanımı' veya 'Yapılan İşin Açıklaması' alanını doldurun.");
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/maintenance-rows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      isAddingScheduleRow = false;
+      await refreshMachineScheduleRows();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Satır kaydedilemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
+}
+
+function startEditScheduleRow(rowId) {
+  isAddingScheduleRow = false;
+  editingScheduleRowId = rowId;
+  renderMachineScheduleTable();
+}
+
+function cancelEditScheduleRow() {
+  editingScheduleRowId = null;
+  renderMachineScheduleTable();
+}
+
+async function saveEditedScheduleRow(rowId) {
+  if (!activeFolderMachineCode) return;
+  const payload = {
+    date_str: document.getElementById("sched-edit-date")?.value.trim() || "",
+    fault_work_title: document.getElementById("sched-edit-title")?.value.trim() || "",
+    work_description: document.getElementById("sched-edit-desc")?.value.trim() || "",
+    replaced_part: document.getElementById("sched-edit-part")?.value.trim() || "",
+    mold_shot_count: document.getElementById("sched-edit-mold")?.value.trim() || "",
+    notification_no: document.getElementById("sched-edit-notif")?.value.trim() || "",
+    used_material: document.getElementById("sched-edit-mat")?.value.trim() || "",
+    performed_by: document.getElementById("sched-edit-perf")?.value.trim() || "",
+    approved_by: document.getElementById("sched-edit-appr")?.value.trim() || ""
+  };
+
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/maintenance-rows/${rowId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      editingScheduleRowId = null;
+      await refreshMachineScheduleRows();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Satır güncellenemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
+}
+
+async function deleteScheduleRow(rowId) {
+  if (!activeFolderMachineCode) return;
+  if (!confirm("Bu çizelge satırını silmek istediğinize emin misiniz?")) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/maintenance-rows/${rowId}`, {
+      method: "DELETE"
+    });
+    if (res.ok) {
+      await refreshMachineScheduleRows();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Satır silinemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
 }
 
 // ----------------- DORUK OTOMASYON & KEYPET İŞLEMLERİ -----------------

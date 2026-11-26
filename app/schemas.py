@@ -60,6 +60,40 @@ class MachineSubfolderResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class MachineMaintenanceRowBase(BaseModel):
+    date_str: Optional[str] = ""
+    fault_work_title: Optional[str] = ""
+    work_description: Optional[str] = ""
+    replaced_part: Optional[str] = ""
+    mold_shot_count: Optional[str] = ""
+    notification_no: Optional[str] = ""
+    used_material: Optional[str] = ""
+    performed_by: Optional[str] = ""
+    approved_by: Optional[str] = ""
+
+class MachineMaintenanceRowCreate(MachineMaintenanceRowBase):
+    pass
+
+class MachineMaintenanceRowUpdate(BaseModel):
+    date_str: Optional[str] = None
+    fault_work_title: Optional[str] = None
+    work_description: Optional[str] = None
+    replaced_part: Optional[str] = None
+    mold_shot_count: Optional[str] = None
+    notification_no: Optional[str] = None
+    used_material: Optional[str] = None
+    performed_by: Optional[str] = None
+    approved_by: Optional[str] = None
+
+class MachineMaintenanceRowResponse(MachineMaintenanceRowBase):
+    id: int
+    machine_id: int
+    created_by: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class MachineResponse(MachineBase):
     id: int
     total_downtime_minutes: int
