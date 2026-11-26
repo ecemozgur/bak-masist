@@ -94,6 +94,46 @@ class MachineMaintenanceRowResponse(MachineMaintenanceRowBase):
     class Config:
         from_attributes = True
 
+class MachinePeriodicCheckCreate(BaseModel):
+    date_str: Optional[str] = ""
+    check_type: Optional[str] = "GÜNLÜK"
+    status: Optional[str] = "UYGUN"
+    operator_name: Optional[str] = ""
+    notes: Optional[str] = ""
+
+class MachinePeriodicCheckResponse(BaseModel):
+    id: int
+    machine_id: Optional[int] = None
+    machine_code: Optional[str] = None
+    date_str: str
+    check_type: str
+    status: str
+    operator_name: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class MachineTcfRecordCreate(BaseModel):
+    doc_no: Optional[str] = ""
+    title: str
+    revision: Optional[str] = ""
+    notes: Optional[str] = ""
+
+class MachineTcfRecordResponse(BaseModel):
+    id: int
+    machine_id: int
+    doc_no: str
+    title: str
+    revision: str
+    notes: str
+    created_by: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class MachineResponse(MachineBase):
     id: int
     total_downtime_minutes: int

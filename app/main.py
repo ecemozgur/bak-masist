@@ -15,11 +15,13 @@ from app.config import (
     DORUK_ENABLED, SESSION_COOKIE_NAME, SESSION_TTL_DAYS, now_tr
 )
 from app.database import get_db, engine, Base
-from app.models import User, Machine, MachineSubfolder, MachineMaintenanceRow, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask, PeriodicCheck
+from app.models import User, Machine, MachineSubfolder, MachineMaintenanceRow, MachineTcfRecord, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask, PeriodicCheck
 from app.schemas import (
     UserLogin, UserCreate, UserUpdate, UserResponse, MachineResponse, MachineCreate,
     MachineSubfolderCreate, MachineSubfolderResponse,
     MachineMaintenanceRowCreate, MachineMaintenanceRowUpdate, MachineMaintenanceRowResponse,
+    MachinePeriodicCheckCreate, MachinePeriodicCheckResponse,
+    MachineTcfRecordCreate, MachineTcfRecordResponse,
     MaintenanceLogCreate, MaintenanceLogResponse,
     VoiceParseRequest, VoiceParseResponse,
     ChatQueryRequest, ChatQueryResponse, DorukPullRequest,
@@ -367,6 +369,14 @@ def get_machine_folder(
         MachineMaintenanceRow.machine_id == machine.id
     ).order_by(MachineMaintenanceRow.id.asc()).all()
 
+    periodic_count = db.query(PeriodicCheck).filter(
+        PeriodicCheck.machine_id == machine.id
+    ).count()
+
+    tcf_count = db.query(MachineTcfRecord).filter(
+        MachineTcfRecord.machine_id == machine.id
+    ).count()
+
     formatted_subfolders = [
         {
             "id": sf.id,
@@ -428,6 +438,8 @@ def get_machine_folder(
         "subfolders": formatted_subfolders,
         "maintenance_rows": formatted_maintenance_rows,
         "maintenance_rows_count": len(formatted_maintenance_rows),
+        "periodic_count": periodic_count,
+        "tcf_count": tcf_count,
         "total_interventions": len(formatted_logs),
         "history": formatted_logs
     }
@@ -594,6 +606,131 @@ def delete_machine_maintenance_row(
     if not row:
         raise HTTPException(status_code=404, detail="Çizelge satırı bulunamadı!")
     db.delete(row)
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/api/machines/{machine_code}/periodic-checks", response_model=List[MachinePeriodicCheckResponse])
+def get_machine_periodic_checks(
+    machine_code: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Belirli makinenin periyodik kontrol kayıtlarını listeler."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    return db.query(PeriodicCheck).filter(
+        PeriodicCheck.machine_id == machine.id
+    ).order_by(PeriodicCheck.id.desc()).all()
+
+@app.post("/api/machines/{machine_code}/periodic-checks", response_model=MachinePeriodicCheckResponse)
+def create_machine_periodic_check(
+    machine_code: str,
+    data: MachinePeriodicCheckCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Makineye yeni periyodik kontrol kaydı ekler."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    rec = PeriodicCheck(
+        machine_id=machine.id,
+        machine_code=machine.code,
+        line_name=machine.line,
+        building=machine.department,
+        user_id=current_user.id,
+        operator_name=(data.operator_name or "").strip() or current_user.full_name,
+        date_str=(data.date_str or "").strip() or now_tr().strftime("%d.%m.%Y"),
+        check_type=(data.check_type or "GÜNLÜK").strip().upper(),
+        status=(data.status or "UYGUN").strip().upper(),
+        notes=(data.notes or "").strip()
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+@app.delete("/api/machines/{machine_code}/periodic-checks/{check_id}")
+def delete_machine_periodic_check(
+    machine_code: str,
+    check_id: int,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Makinenin periyodik kontrol kaydını siler."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    rec = db.query(PeriodicCheck).filter(
+        PeriodicCheck.id == check_id,
+        PeriodicCheck.machine_id == machine.id
+    ).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Periyodik kontrol kaydı bulunamadı!")
+    db.delete(rec)
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/api/machines/{machine_code}/tcf", response_model=List[MachineTcfRecordResponse])
+def get_machine_tcf_records(
+    machine_code: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Makineye ait TCF kayıtlarını listeler."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    return db.query(MachineTcfRecord).filter(
+        MachineTcfRecord.machine_id == machine.id
+    ).order_by(MachineTcfRecord.id.desc()).all()
+
+@app.post("/api/machines/{machine_code}/tcf", response_model=MachineTcfRecordResponse)
+def create_machine_tcf_record(
+    machine_code: str,
+    data: MachineTcfRecordCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Makineye yeni TCF kaydı ekler."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    title = (data.title or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Başlık zorunludur.")
+    rec = MachineTcfRecord(
+        machine_id=machine.id,
+        doc_no=(data.doc_no or "").strip(),
+        title=title,
+        revision=(data.revision or "").strip(),
+        notes=(data.notes or "").strip(),
+        created_by=current_user.full_name
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+@app.delete("/api/machines/{machine_code}/tcf/{record_id}")
+def delete_machine_tcf_record(
+    machine_code: str,
+    record_id: int,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Makine TCF kaydını siler."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    rec = db.query(MachineTcfRecord).filter(
+        MachineTcfRecord.id == record_id,
+        MachineTcfRecord.machine_id == machine.id
+    ).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="TCF kaydı bulunamadı!")
+    db.delete(rec)
     db.commit()
     return {"status": "ok"}
 

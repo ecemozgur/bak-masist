@@ -37,6 +37,7 @@ class Machine(Base):
     chats = relationship("ChatMessage", back_populates="machine")
     subfolders = relationship("MachineSubfolder", back_populates="machine", cascade="all, delete-orphan")
     maintenance_rows = relationship("MachineMaintenanceRow", back_populates="machine", cascade="all, delete-orphan")
+    tcf_records = relationship("MachineTcfRecord", back_populates="machine", cascade="all, delete-orphan")
 
 class MachineSubfolder(Base):
     __tablename__ = "machine_subfolders"
@@ -70,6 +71,21 @@ class MachineMaintenanceRow(Base):
     updated_at = Column(DateTime, default=now_tr, onupdate=now_tr)
 
     machine = relationship("Machine", back_populates="maintenance_rows")
+
+class MachineTcfRecord(Base):
+    """Makine klasörüne bağlı TCF (Teknik Dosya / Talimat) kayıtları."""
+    __tablename__ = "machine_tcf_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(Integer, ForeignKey("machines.id"), nullable=False, index=True)
+    doc_no = Column(String(100), nullable=False, default="")
+    title = Column(String(200), nullable=False)
+    revision = Column(String(50), nullable=False, default="")
+    notes = Column(Text, nullable=False, default="")
+    created_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=now_tr)
+
+    machine = relationship("Machine", back_populates="tcf_records")
 
 class MaintenanceLog(Base):
     __tablename__ = "maintenance_logs"

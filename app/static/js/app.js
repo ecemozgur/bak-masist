@@ -1210,9 +1210,6 @@ function renderMachinesGrid(machines) {
                     <span class="px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-lg tracking-wider">
                       ${m.code}
                     </span>
-                    <span class="text-[10px] font-bold ${m.status === 'CALISIYOR' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-rose-700 bg-rose-50 border-rose-200'} px-1.5 py-0.5 rounded border">
-                      ${m.status === 'CALISIYOR' ? '● ÇALIŞIYOR' : '● ' + m.status}
-                    </span>
                   </div>
                   <h4 class="text-xs font-bold text-slate-900 leading-snug group-hover:text-blue-600 transition" title="${m.name}">
                     ${m.name}
@@ -1220,12 +1217,8 @@ function renderMachinesGrid(machines) {
                   <p class="text-[10px] text-slate-500 mt-0.5 truncate">${m.model || '-'}</p>
                 </div>
 
-                <div class="pt-2.5 border-t border-slate-200 mt-2.5 space-y-2">
-                  <div class="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                    <span>⏱️ <b class="text-slate-800">${m.total_downtime_minutes || 0}</b> dk duruş</span>
-                    <span class="text-slate-400 font-normal">🔧 ${m.log_count || 0} kayıt</span>
-                  </div>
-                  <div class="flex items-center gap-1.5 pt-1">
+                <div class="pt-2.5 border-t border-slate-200 mt-2.5">
+                  <div class="flex items-center gap-1.5">
                     <button type="button" data-machine-code="${escapeHtml(m.code)}" onclick="openMachineFolder(this.dataset.machineCode)" class="flex-1 py-1.5 px-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition shadow-2xs active:scale-95">
                       <i data-lucide="folder" class="w-3.5 h-3.5 text-blue-600"></i>
                       <span>Klasör</span>
@@ -1362,9 +1355,16 @@ async function openMachineFolder(machineCode) {
 
     document.getElementById("modalMachineCode").innerText = data.machine.code;
     document.getElementById("modalMachineName").innerText = `${data.machine.name} (${data.machine.department} - ${data.machine.line})`;
-    document.getElementById("modalTotalDowntime").innerText = `${data.machine.total_downtime} dk`;
-    document.getElementById("modalInterventionCount").innerText = data.total_interventions;
 
+    const downtimeEl = document.getElementById("modalTotalDowntime");
+    if (downtimeEl) downtimeEl.innerText = `${data.machine.total_downtime} dk`;
+    const intEl = document.getElementById("modalInterventionCount");
+    if (intEl) intEl.innerText = data.total_interventions;
+
+    const periodicBadge = document.getElementById("modalPeriodicCount");
+    if (periodicBadge) periodicBadge.innerText = `${data.periodic_count || 0} kayıt`;
+    const tcfBadge = document.getElementById("modalTcfCount");
+    if (tcfBadge) tcfBadge.innerText = `${data.tcf_count || 0} kayıt`;
     const scheduleBadge = document.getElementById("modalScheduleRowCount");
     if (scheduleBadge) {
       scheduleBadge.innerText = `${activeScheduleRows.length} satır`;
@@ -1502,6 +1502,208 @@ async function deleteMachineSubfolder(folderId) {
 function closeMachineFolderModal() {
   document.getElementById("machineFolderModal").classList.add("hidden");
   closeMachineScheduleModal();
+  closeMachinePeriodicModal();
+  closeMachineTcfModal();
+}
+
+// ----------------- PERİYODİK KONTROL MODALI -----------------
+async function openMachinePeriodicModal() {
+  if (!activeFolderMachineCode) return;
+  if (!Array.isArray(allUsers) || allUsers.length === 0) {
+    try { await loadUsers(); } catch (e) {}
+  }
+
+  const labelEl = document.getElementById("periodicMachineLabel");
+  if (labelEl) {
+    labelEl.innerText = activeFolderMachineInfo
+      ? `${activeFolderMachineInfo.code} - ${activeFolderMachineInfo.name}`
+      : activeFolderMachineCode;
+  }
+
+  const dateIn = document.getElementById("periodicDateInput");
+  if (dateIn) dateIn.value = getTodayTrDateDot();
+  const opSel = document.getElementById("periodicOperatorInput");
+  if (opSel) opSel.innerHTML = buildScheduleOperatorOptions(currentUser?.full_name || "");
+
+  document.getElementById("machinePeriodicModal").classList.remove("hidden");
+  await refreshMachinePeriodicChecks();
+}
+
+function closeMachinePeriodicModal() {
+  const modal = document.getElementById("machinePeriodicModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function refreshMachinePeriodicChecks() {
+  if (!activeFolderMachineCode) return;
+  const tbody = document.getElementById("machinePeriodicTableBody");
+  if (!tbody) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/periodic-checks`);
+    const rows = res.ok ? await res.json() : [];
+    const badge = document.getElementById("modalPeriodicCount");
+    if (badge) badge.innerText = `${rows.length} kayıt`;
+
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">Henüz periyodik kontrol kaydı girilmemiş.</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map(r => `
+        <tr class="hover:bg-slate-50">
+          <td class="p-2.5 text-center font-semibold text-slate-800 whitespace-nowrap">${escapeHtml(r.date_str)}</td>
+          <td class="p-2.5 text-center"><span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded font-bold text-[10px]">${escapeHtml(r.check_type)}</span></td>
+          <td class="p-2.5 text-center"><span class="px-2 py-0.5 rounded font-bold text-[10px] ${r.status === 'UYGUN' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${escapeHtml(r.status)}</span></td>
+          <td class="p-2.5 text-slate-700 break-words">${escapeHtml(r.notes || '-')}</td>
+          <td class="p-2.5 text-center text-slate-700">${escapeHtml(r.operator_name || '-')}</td>
+          <td class="p-2.5 text-center">
+            <button type="button" onclick="deleteMachinePeriodicCheck(${r.id})" class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition" title="Sil">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </td>
+        </tr>
+      `).join("");
+    }
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    console.error("Periyodik kontroller yüklenemedi:", e);
+  }
+}
+
+async function submitMachinePeriodicCheck(event) {
+  event.preventDefault();
+  if (!activeFolderMachineCode) return;
+  const payload = {
+    date_str: document.getElementById("periodicDateInput")?.value.trim() || getTodayTrDateDot(),
+    check_type: document.getElementById("periodicTypeInput")?.value || "GÜNLÜK",
+    status: document.getElementById("periodicStatusInput")?.value || "UYGUN",
+    operator_name: document.getElementById("periodicOperatorInput")?.value || "",
+    notes: document.getElementById("periodicNotesInput")?.value.trim() || ""
+  };
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/periodic-checks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      const notesEl = document.getElementById("periodicNotesInput");
+      if (notesEl) notesEl.value = "";
+      await refreshMachinePeriodicChecks();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "Kayıt eklenemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
+}
+
+async function deleteMachinePeriodicCheck(checkId) {
+  if (!activeFolderMachineCode) return;
+  if (!confirm("Bu periyodik kontrol kaydını silmek istediğinize emin misiniz?")) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/periodic-checks/${checkId}`, {
+      method: "DELETE"
+    });
+    if (res.ok) await refreshMachinePeriodicChecks();
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
+}
+
+// ----------------- TCF MODALI -----------------
+async function openMachineTcfModal() {
+  if (!activeFolderMachineCode) return;
+  const labelEl = document.getElementById("tcfMachineLabel");
+  if (labelEl) {
+    labelEl.innerText = activeFolderMachineInfo
+      ? `${activeFolderMachineInfo.code} - ${activeFolderMachineInfo.name}`
+      : activeFolderMachineCode;
+  }
+  document.getElementById("machineTcfModal").classList.remove("hidden");
+  await refreshMachineTcfRecords();
+}
+
+function closeMachineTcfModal() {
+  const modal = document.getElementById("machineTcfModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function refreshMachineTcfRecords() {
+  if (!activeFolderMachineCode) return;
+  const tbody = document.getElementById("machineTcfTableBody");
+  if (!tbody) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/tcf`);
+    const rows = res.ok ? await res.json() : [];
+    const badge = document.getElementById("modalTcfCount");
+    if (badge) badge.innerText = `${rows.length} kayıt`;
+
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">Henüz TCF kaydı eklenmemiş.</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map(r => `
+        <tr class="hover:bg-slate-50">
+          <td class="p-2.5 text-center font-bold text-purple-700 whitespace-nowrap">${escapeHtml(r.doc_no || '-')}</td>
+          <td class="p-2.5 font-semibold text-slate-900">${escapeHtml(r.title)}</td>
+          <td class="p-2.5 text-center text-slate-600">${escapeHtml(r.revision || '-')}</td>
+          <td class="p-2.5 text-slate-700 break-words">${escapeHtml(r.notes || '-')}</td>
+          <td class="p-2.5 text-center text-slate-600">${escapeHtml(r.created_by || '-')}</td>
+          <td class="p-2.5 text-center">
+            <button type="button" onclick="deleteMachineTcfRecord(${r.id})" class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition" title="Sil">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </td>
+        </tr>
+      `).join("");
+    }
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    console.error("TCF kayıtları yüklenemedi:", e);
+  }
+}
+
+async function submitMachineTcfRecord(event) {
+  event.preventDefault();
+  if (!activeFolderMachineCode) return;
+  const payload = {
+    doc_no: document.getElementById("tcfDocNoInput")?.value.trim() || "",
+    title: document.getElementById("tcfTitleInput")?.value.trim() || "",
+    revision: document.getElementById("tcfRevisionInput")?.value.trim() || "",
+    notes: document.getElementById("tcfNotesInput")?.value.trim() || ""
+  };
+  if (!payload.title) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/tcf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      ["tcfDocNoInput", "tcfTitleInput", "tcfRevisionInput", "tcfNotesInput"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      });
+      await refreshMachineTcfRecords();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Hata: ${err.detail || "TCF kaydı eklenemedi."}`);
+    }
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
+}
+
+async function deleteMachineTcfRecord(recordId) {
+  if (!activeFolderMachineCode) return;
+  if (!confirm("Bu TCF kaydını silmek istediğinize emin misiniz?")) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/tcf/${recordId}`, {
+      method: "DELETE"
+    });
+    if (res.ok) await refreshMachineTcfRecords();
+  } catch (e) {
+    alert("Sunucuya bağlanılamadı.");
+  }
 }
 
 // ----------------- FR-PE-0006 MAKİNA VE TEÇHİZAT ARIZA, BAKIM ÇİZELGESİ -----------------
