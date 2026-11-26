@@ -1056,10 +1056,20 @@ async function loadMachines() {
     // Chatbot dropdown'unu güncelle
     const chatSelect = document.getElementById("chatTargetMachine");
     const optionsHtml = '<option value="">Tüm Makineler</option>' + allMachines.map(m => `
-      <option value="${m.code}">${m.code} - ${m.name}</option>
+      <option value="${escapeHtml(m.code)}">${escapeHtml(m.code)} - ${escapeHtml(m.name)}</option>
     `).join("");
 
     if (chatSelect) chatSelect.innerHTML = optionsHtml;
+
+    // Excel İndirme Merkezi FR-PE-0006 makine seçicisini güncelle
+    const frPeSelect = document.getElementById("excelFrPe0006MachineSelect");
+    if (frPeSelect) {
+      const prevVal = frPeSelect.value;
+      frPeSelect.innerHTML = '<option value="">-- Makine Seçin --</option>' + allMachines.map(m => `
+        <option value="${escapeHtml(m.code)}">${escapeHtml(m.code)} - ${escapeHtml(m.name)} (${escapeHtml(m.department || '')})</option>
+      `).join("");
+      if (prevVal) frPeSelect.value = prevVal;
+    }
   } catch (e) {
     console.error("Makineler yüklenemedi:", e);
   }
@@ -1546,10 +1556,21 @@ function buildScheduleOperatorOptions(selectedValue = "") {
   return options;
 }
 
-function downloadMachineScheduleExcel() {
-  if (!activeFolderMachineCode) return;
-  const url = `/api/machines/${encodeURIComponent(activeFolderMachineCode)}/maintenance-rows/export`;
+function downloadMachineScheduleExcel(machineCode = null) {
+  const targetCode = (machineCode || activeFolderMachineCode || "").trim();
+  if (!targetCode) return;
+  const url = `/api/machines/${encodeURIComponent(targetCode)}/maintenance-rows/export`;
   window.location.href = url;
+}
+
+function downloadFrPe0006FromCenter() {
+  const sel = document.getElementById("excelFrPe0006MachineSelect");
+  const code = sel ? sel.value.trim() : "";
+  if (!code) {
+    alert("Lütfen çizelgesini indirmek istediğiniz makineyi seçin.");
+    return;
+  }
+  downloadMachineScheduleExcel(code);
 }
 
 function closeMachineScheduleModal() {
