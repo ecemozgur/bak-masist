@@ -1506,108 +1506,314 @@ function closeMachineFolderModal() {
   closeMachineTcfModal();
 }
 
-// ----------------- PERİYODİK KONTROL MODALI -----------------
+// ----------------- FR-PE-0446 PERİYODİK BAKIM KONTROL LİSTESİ MODALI -----------------
+const PERIODIC_MONTHS_LIST = [
+  "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL",
+  "EKİM", "KASIM", "ARALIK", "OCAK", "ŞUBAT", "MART"
+];
+let activePeriodicSheet = null;
+
 async function openMachinePeriodicModal() {
   if (!activeFolderMachineCode) return;
   if (!Array.isArray(allUsers) || allUsers.length === 0) {
     try { await loadUsers(); } catch (e) {}
   }
 
-  const labelEl = document.getElementById("periodicMachineLabel");
-  if (labelEl) {
-    labelEl.innerText = activeFolderMachineInfo
-      ? `${activeFolderMachineInfo.code} - ${activeFolderMachineInfo.name}`
-      : activeFolderMachineCode;
+  const yearSel = document.getElementById("periodicYearSelect");
+  const currentYear = new Date().getFullYear();
+  if (yearSel && ![...yearSel.options].some(o => Number(o.value) === currentYear)) {
+    const opt = document.createElement("option");
+    opt.value = String(currentYear);
+    opt.textContent = String(currentYear);
+    yearSel.appendChild(opt);
   }
+  if (yearSel) yearSel.value = String(currentYear);
 
-  const dateIn = document.getElementById("periodicDateInput");
-  if (dateIn) dateIn.value = getTodayTrDateDot();
-  const opSel = document.getElementById("periodicOperatorInput");
-  if (opSel) opSel.innerHTML = buildScheduleOperatorOptions(currentUser?.full_name || "");
-
+  toggleAddPeriodicParamForm(false);
   document.getElementById("machinePeriodicModal").classList.remove("hidden");
-  await refreshMachinePeriodicChecks();
+  await loadMachinePeriodicSheet(currentYear);
 }
 
 function closeMachinePeriodicModal() {
   const modal = document.getElementById("machinePeriodicModal");
   if (modal) modal.classList.add("hidden");
+  toggleAddPeriodicParamForm(false);
 }
 
-async function refreshMachinePeriodicChecks() {
-  if (!activeFolderMachineCode) return;
-  const tbody = document.getElementById("machinePeriodicTableBody");
-  if (!tbody) return;
-  try {
-    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/periodic-checks`);
-    const rows = res.ok ? await res.json() : [];
-    const badge = document.getElementById("modalPeriodicCount");
-    if (badge) badge.innerText = `${rows.length} kayıt`;
+async function changePeriodicSheetYear() {
+  const yearSel = document.getElementById("periodicYearSelect");
+  const yr = Number(yearSel?.value) || new Date().getFullYear();
+  await loadMachinePeriodicSheet(yr);
+}
 
-    if (rows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">Henüz periyodik kontrol kaydı girilmemiş.</td></tr>`;
-    } else {
-      tbody.innerHTML = rows.map(r => `
-        <tr class="hover:bg-slate-50">
-          <td class="p-2.5 text-center font-semibold text-slate-800 whitespace-nowrap">${escapeHtml(r.date_str)}</td>
-          <td class="p-2.5 text-center"><span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded font-bold text-[10px]">${escapeHtml(r.check_type)}</span></td>
-          <td class="p-2.5 text-center"><span class="px-2 py-0.5 rounded font-bold text-[10px] ${r.status === 'UYGUN' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${escapeHtml(r.status)}</span></td>
-          <td class="p-2.5 text-slate-700 break-words">${escapeHtml(r.notes || '-')}</td>
-          <td class="p-2.5 text-center text-slate-700">${escapeHtml(r.operator_name || '-')}</td>
-          <td class="p-2.5 text-center">
-            <button type="button" onclick="deleteMachinePeriodicCheck(${r.id})" class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition" title="Sil">
-              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-            </button>
-          </td>
-        </tr>
-      `).join("");
+async function loadMachinePeriodicSheet(year) {
+  if (!activeFolderMachineCode) return;
+  try {
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/periodic-sheet?year=${encodeURIComponent(year)}`);
+    if (!res.ok) {
+      alert("Periyodik kontrol listesi yüklenemedi.");
+      return;
     }
-    if (window.lucide) lucide.createIcons();
+    activePeriodicSheet = await res.json();
+
+    const labelEl = document.getElementById("periodicMachineLabel");
+    if (labelEl) {
+      labelEl.innerText = `${activePeriodicSheet.machine_code} - ${activePeriodicSheet.machine_name} • ${activePeriodicSheet.doc_no} (${activePeriodicSheet.year})`;
+    }
+    const titleEl = document.getElementById("periodicFormTitle");
+    if (titleEl) titleEl.innerText = activePeriodicSheet.title || `${activePeriodicSheet.machine_code} PERİYODİK BAKIM KONTROL LİSTESİ`;
+    const revEl = document.getElementById("periodicFormRev");
+    if (revEl) revEl.innerText = activePeriodicSheet.revision || "Rev. 9.10.2026";
+    const docEl = document.getElementById("periodicFormDocNo");
+    if (docEl) docEl.innerText = activePeriodicSheet.doc_no || "FR-PE-0446";
+
+    const savedInfo = document.getElementById("periodicLastSavedInfo");
+    if (savedInfo) {
+      savedInfo.innerText = activePeriodicSheet.updated_at
+        ? `Son kayıt: ${activePeriodicSheet.updated_by || '-'} (${activePeriodicSheet.updated_at})`
+        : "";
+    }
+
+    renderMachinePeriodicSheet();
   } catch (e) {
-    console.error("Periyodik kontroller yüklenemedi:", e);
+    console.error("Periyodik kontrol listesi yüklenemedi:", e);
+    alert("Sunucuya bağlanılamadı.");
   }
 }
 
-async function submitMachinePeriodicCheck(event) {
+function renderMachinePeriodicSheet() {
+  const tbody = document.getElementById("machinePeriodicTableBody");
+  if (!tbody || !activePeriodicSheet) return;
+
+  const months = activePeriodicSheet.months || PERIODIC_MONTHS_LIST;
+  const dates = activePeriodicSheet.dates || {};
+  const rows = activePeriodicSheet.rows || [];
+  const performedBy = activePeriodicSheet.performed_by || {};
+  const approvedBy = activePeriodicSheet.approved_by || {};
+
+  let html = "";
+
+  // Satır 0: BAKIM HAFTA VE TARİH
+  html += `
+    <tr class="bg-indigo-50/80">
+      <td class="border border-slate-300 px-1.5 py-1.5 text-center font-bold text-slate-500"></td>
+      <td class="border border-slate-300 px-2 py-1.5 font-extrabold text-indigo-950">BAKIM HAFTA VE TARİH</td>
+      <td class="border border-slate-300 px-1.5 py-1.5 text-center text-slate-400">-</td>
+      ${months.map(m => `
+        <td class="border border-slate-300 p-1">
+          <input type="text" value="${escapeHtml(dates[m] || '')}" oninput="updatePeriodicDateCell('${m}', this.value)" placeholder="Hafta/Tar" class="w-full px-1 py-1 text-[10px] text-center border border-indigo-200 rounded bg-white font-semibold focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+        </td>
+      `).join("")}
+      <td class="border border-slate-300 px-2 py-1.5 bg-indigo-50/40"></td>
+    </tr>
+  `;
+
+  // Parametre Satırları (1..23+)
+  rows.forEach((row, rIdx) => {
+    const isNumeric = row.input_type === "numeric";
+    const rowMonths = row.months || {};
+    html += `
+      <tr class="hover:bg-slate-50/80 transition">
+        <td class="border border-slate-300 px-1.5 py-1.5 text-center font-bold text-slate-700">${escapeHtml(String(row.no ?? (rIdx + 1)))}</td>
+        <td class="border border-slate-300 px-2 py-1.5 text-slate-900 font-medium whitespace-pre-line leading-snug">
+          ${escapeHtml(row.parameter || '')}
+          ${isNumeric ? '<span class="ml-1 inline-block px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[9px] font-bold">NUMERİK</span>' : ''}
+        </td>
+        <td class="border border-slate-300 px-1 py-1.5 text-center font-bold text-slate-600 whitespace-nowrap">${escapeHtml(row.period || '')}</td>
+        ${months.map(m => {
+          const val = rowMonths[m] || "";
+          if (isNumeric) {
+            return `
+              <td class="border border-slate-300 p-1 bg-amber-50/30">
+                <input type="text" inputmode="decimal" value="${escapeHtml(val)}" oninput="updatePeriodicValueCell(${rIdx}, '${m}', this.value)" placeholder="Değer" class="w-full px-1 py-1 text-[11px] text-center border border-amber-300 rounded bg-white font-bold text-slate-900 focus:ring-1 focus:ring-amber-500 focus:outline-none">
+              </td>
+            `;
+          }
+          const btnStyle = val === "✓"
+            ? "bg-emerald-100 text-emerald-800 border-emerald-400"
+            : (val === "✗"
+              ? "bg-rose-100 text-rose-700 border-rose-400"
+              : "bg-white hover:bg-slate-100 text-slate-400 border-slate-200");
+          return `
+            <td class="border border-slate-300 p-1 text-center">
+              <button type="button" onclick="togglePeriodicCheckCell(${rIdx}, '${m}')" class="w-full h-7 rounded border font-extrabold text-sm flex items-center justify-center transition active:scale-95 ${btnStyle}" title="Tıklayın: ✓ / ✗ / Boş">
+                ${escapeHtml(val || "·")}
+              </button>
+            </td>
+          `;
+        }).join("")}
+        <td class="border border-slate-300 p-1">
+          <input type="text" value="${escapeHtml(row.notes || '')}" oninput="updatePeriodicRowNote(${rIdx}, this.value)" placeholder="Açıklama..." class="w-full px-1.5 py-1 text-[11px] border border-slate-200 rounded bg-white focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+        </td>
+      </tr>
+    `;
+  });
+
+  // KONTROLÜ YAPAN Satırı
+  html += `
+    <tr class="bg-slate-100/90">
+      <td colspan="3" class="border border-slate-300 px-2.5 py-2 font-extrabold text-slate-800">KONTROLÜ YAPAN</td>
+      ${months.map(m => `
+        <td class="border border-slate-300 p-1">
+          <select onchange="updatePeriodicMetaCell('performed_by', '${m}', this.value)" class="w-full px-1 py-1 text-[10px] border border-slate-300 rounded bg-white font-semibold focus:outline-none">
+            ${buildScheduleOperatorOptions(performedBy[m] || '')}
+          </select>
+        </td>
+      `).join("")}
+      <td class="border border-slate-300 p-1"></td>
+    </tr>
+  `;
+
+  // ONAY Satırı
+  html += `
+    <tr class="bg-slate-100/90">
+      <td colspan="3" class="border border-slate-300 px-2.5 py-2 font-extrabold text-slate-800">ONAY</td>
+      ${months.map(m => `
+        <td class="border border-slate-300 p-1">
+          <input type="text" value="${escapeHtml(approvedBy[m] || '')}" oninput="updatePeriodicMetaCell('approved_by', '${m}', this.value)" placeholder="Onay" class="w-full px-1 py-1 text-[10px] text-center border border-slate-300 rounded bg-white font-semibold focus:outline-none">
+        </td>
+      `).join("")}
+      <td class="border border-slate-300 p-1"></td>
+    </tr>
+  `;
+
+  tbody.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
+}
+
+function togglePeriodicCheckCell(rowIdx, monthName) {
+  if (!activePeriodicSheet || !activePeriodicSheet.rows[rowIdx]) return;
+  const row = activePeriodicSheet.rows[rowIdx];
+  if (!row.months) row.months = {};
+  const cur = row.months[monthName] || "";
+  row.months[monthName] = cur === "" ? "✓" : (cur === "✓" ? "✗" : "");
+  renderMachinePeriodicSheet();
+}
+
+function updatePeriodicValueCell(rowIdx, monthName, val) {
+  if (!activePeriodicSheet || !activePeriodicSheet.rows[rowIdx]) return;
+  if (!activePeriodicSheet.rows[rowIdx].months) activePeriodicSheet.rows[rowIdx].months = {};
+  activePeriodicSheet.rows[rowIdx].months[monthName] = val;
+}
+
+function updatePeriodicRowNote(rowIdx, val) {
+  if (!activePeriodicSheet || !activePeriodicSheet.rows[rowIdx]) return;
+  activePeriodicSheet.rows[rowIdx].notes = val;
+}
+
+function updatePeriodicDateCell(monthName, val) {
+  if (!activePeriodicSheet) return;
+  if (!activePeriodicSheet.dates) activePeriodicSheet.dates = {};
+  activePeriodicSheet.dates[monthName] = val;
+}
+
+function updatePeriodicMetaCell(field, monthName, val) {
+  if (!activePeriodicSheet) return;
+  if (!activePeriodicSheet[field]) activePeriodicSheet[field] = {};
+  activePeriodicSheet[field][monthName] = val;
+}
+
+function toggleAddPeriodicParamForm(forceState) {
+  const form = document.getElementById("periodicAddParamForm");
+  if (!form) return;
+  const show = typeof forceState === "boolean" ? forceState : form.classList.contains("hidden");
+  if (show) {
+    form.classList.remove("hidden");
+    document.getElementById("newPeriodicParamText")?.focus();
+  } else {
+    form.classList.add("hidden");
+  }
+}
+
+function addCustomPeriodicParam(event) {
   event.preventDefault();
-  if (!activeFolderMachineCode) return;
-  const payload = {
-    date_str: document.getElementById("periodicDateInput")?.value.trim() || getTodayTrDateDot(),
-    check_type: document.getElementById("periodicTypeInput")?.value || "GÜNLÜK",
-    status: document.getElementById("periodicStatusInput")?.value || "UYGUN",
-    operator_name: document.getElementById("periodicOperatorInput")?.value || "",
-    notes: document.getElementById("periodicNotesInput")?.value.trim() || ""
-  };
+  if (!activePeriodicSheet) return;
+  const text = document.getElementById("newPeriodicParamText")?.value.trim() || "";
+  const period = document.getElementById("newPeriodicParamPeriod")?.value.trim() || "(YIL/4)";
+  const inputType = document.getElementById("newPeriodicParamType")?.value || "check";
+  if (!text) return;
+
+  const emptyMonths = {};
+  (activePeriodicSheet.months || PERIODIC_MONTHS_LIST).forEach(m => { emptyMonths[m] = ""; });
+  activePeriodicSheet.rows.push({
+    no: activePeriodicSheet.rows.length + 1,
+    parameter: text,
+    period: period,
+    input_type: inputType,
+    months: emptyMonths,
+    notes: ""
+  });
+  const textEl = document.getElementById("newPeriodicParamText");
+  if (textEl) textEl.value = "";
+  toggleAddPeriodicParamForm(false);
+  renderMachinePeriodicSheet();
+}
+
+async function saveMachinePeriodicSheet() {
+  if (!activeFolderMachineCode || !activePeriodicSheet) return;
+  const btn = document.getElementById("btnSavePeriodicSheet");
+  const prevHtml = btn ? btn.innerHTML : "";
+  if (btn) btn.disabled = true;
+
   try {
-    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/periodic-checks`, {
-      method: "POST",
+    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/periodic-sheet`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        year: activePeriodicSheet.year,
+        doc_no: activePeriodicSheet.doc_no || "FR-PE-0446",
+        revision: activePeriodicSheet.revision || "Rev. 9.10.2026",
+        title: activePeriodicSheet.title,
+        dates: activePeriodicSheet.dates || {},
+        rows: activePeriodicSheet.rows || [],
+        performed_by: activePeriodicSheet.performed_by || {},
+        approved_by: activePeriodicSheet.approved_by || {}
+      })
     });
     if (res.ok) {
-      const notesEl = document.getElementById("periodicNotesInput");
-      if (notesEl) notesEl.value = "";
-      await refreshMachinePeriodicChecks();
+      const result = await res.json();
+      let filledCount = 0;
+      (activePeriodicSheet.rows || []).forEach(r => {
+        Object.values(r.months || {}).forEach(v => { if (String(v || "").trim()) filledCount++; });
+      });
+      const badge = document.getElementById("modalPeriodicCount");
+      if (badge) badge.innerText = `${filledCount} kayıt`;
+      const savedInfo = document.getElementById("periodicLastSavedInfo");
+      if (savedInfo) savedInfo.innerText = `Son kayıt: ${result.updated_by || '-'} (${result.updated_at || ''})`;
+      if (btn) {
+        btn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i><span>Kaydedildi</span>`;
+        if (window.lucide) lucide.createIcons();
+        setTimeout(() => {
+          btn.innerHTML = prevHtml;
+          if (window.lucide) lucide.createIcons();
+        }, 1600);
+      }
     } else {
       const err = await res.json().catch(() => ({}));
-      alert(`Hata: ${err.detail || "Kayıt eklenemedi."}`);
+      alert(`Hata: ${err.detail || "Periyodik kontrol listesi kaydedilemedi."}`);
     }
   } catch (e) {
     alert("Sunucuya bağlanılamadı.");
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
-async function deleteMachinePeriodicCheck(checkId) {
-  if (!activeFolderMachineCode) return;
-  if (!confirm("Bu periyodik kontrol kaydını silmek istediğinize emin misiniz?")) return;
-  try {
-    const res = await fetch(`/api/machines/${encodeURIComponent(activeFolderMachineCode)}/periodic-checks/${checkId}`, {
-      method: "DELETE"
-    });
-    if (res.ok) await refreshMachinePeriodicChecks();
-  } catch (e) {
-    alert("Sunucuya bağlanılamadı.");
+function downloadMachinePeriodicExcel(machineCode = null, year = null) {
+  const targetCode = (machineCode || activeFolderMachineCode || "").trim();
+  if (!targetCode) return;
+  const yr = year || activePeriodicSheet?.year || Number(document.getElementById("periodicYearSelect")?.value) || new Date().getFullYear();
+  window.location.href = `/api/machines/${encodeURIComponent(targetCode)}/periodic-sheet/export?year=${encodeURIComponent(yr)}`;
+}
+
+function downloadFrPe0446FromCenter() {
+  const sel = document.getElementById("excelFrPe0006MachineSelect");
+  const code = sel ? sel.value.trim() : "";
+  if (!code) {
+    alert("Lütfen periyodik kontrol listesini indirmek istediğiniz makineyi seçin.");
+    return;
   }
+  downloadMachinePeriodicExcel(code, new Date().getFullYear());
 }
 
 // ----------------- TCF MODALI -----------------

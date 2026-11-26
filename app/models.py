@@ -38,6 +38,7 @@ class Machine(Base):
     subfolders = relationship("MachineSubfolder", back_populates="machine", cascade="all, delete-orphan")
     maintenance_rows = relationship("MachineMaintenanceRow", back_populates="machine", cascade="all, delete-orphan")
     tcf_records = relationship("MachineTcfRecord", back_populates="machine", cascade="all, delete-orphan")
+    periodic_sheets = relationship("MachinePeriodicSheet", back_populates="machine", cascade="all, delete-orphan")
 
 class MachineSubfolder(Base):
     __tablename__ = "machine_subfolders"
@@ -86,6 +87,22 @@ class MachineTcfRecord(Base):
     created_at = Column(DateTime, default=now_tr)
 
     machine = relationship("Machine", back_populates="tcf_records")
+
+class MachinePeriodicSheet(Base):
+    """FR-PE-0446 Periyodik Bakım Kontrol Listesi (yıllık 12 aylık matris)."""
+    __tablename__ = "machine_periodic_sheets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(Integer, ForeignKey("machines.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False, default=2026)
+    doc_no = Column(String(50), nullable=False, default="FR-PE-0446")
+    revision = Column(String(50), nullable=False, default="Rev. 9.10.2026")
+    title = Column(String(255), nullable=False, default="")
+    sheet_json = Column(Text, nullable=False, default="{}")
+    updated_by = Column(String(100), nullable=True)
+    updated_at = Column(DateTime, default=now_tr, onupdate=now_tr)
+
+    machine = relationship("Machine", back_populates="periodic_sheets")
 
 class MaintenanceLog(Base):
     __tablename__ = "maintenance_logs"

@@ -825,3 +825,269 @@ class ExcelService:
         buffer.seek(0)
         return buffer.getvalue(), export_filename
 
+    PERIODIC_MONTHS = [
+        "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL",
+        "EKİM", "KASIM", "ARALIK", "OCAK", "ŞUBAT", "MART"
+    ]
+
+    DEFAULT_PERIODIC_ROWS = [
+        {"no": 1, "parameter": "KOÇ KIZAK PARALELLİK KONTROLÜ (YIL/1 SERVİS YAPACAK)\n(PARALEL OLMALI MAX:0.05 KAÇIK OLMALI)", "period": "(YIL/1)", "input_type": "check"},
+        {"no": 2, "parameter": "KAVRAMA GRUBU KONTROLÜ\n(AŞINMA OLMAMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 3, "parameter": "REGLAJ GRUBU KONTROLÜ\n( EYE MARK OLMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 4, "parameter": "YAĞ POMPASI VE YAĞLAMA SİSTEMİ KONTROLÜ\n(KAÇAK VE DEFORME OLMAMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 5, "parameter": "ELEKTRİK PANO -TESİSAT VE SENSÖR KONTROLÜ\n(GEVŞEME VE KOPMA OLMAMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 6, "parameter": "MOTOR KAYIŞLARININ KONTROLÜ\n(GEVŞEME ÇATLAK VE KOPMA OLMAMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 7, "parameter": "ŞANZIMAN YAĞ KONTROLÜ\n(TANK GÖSTERGE DOLU GÖSTERMELİ)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 8, "parameter": "YAĞ SEVİYESİ KONTROLÜ\n(TANK GÖSTERGE İŞARETLİ ARALIKTA OLMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 9, "parameter": "MAKINA GENEL ÇALIŞMA KONTROLÜ\n( ÇALIŞIYOR OLMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 10, "parameter": "AÇİL STOP VE IŞIK BARİYERİ KONTROLÜ\n(ÇALIŞMALI DEFORME GEVŞEME OLMAMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 11, "parameter": "YAĞ VE HAVA KAÇAK KONTROLÜ\n(KAÇAK OLMAMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 12, "parameter": "HAVA BASINÇ KONTROLÜ   ( 6 BAR OLMALI ÖLÇÜLEN DEĞER RAKAMSAL OLARAK YAZILMALI )", "period": "(YIL/4)", "input_type": "numeric"},
+        {"no": 13, "parameter": "YAĞLAMA SİSTEMİ GERİ DÖNÜŞ FİLTRE KONTROLÜ (TIKALI OLMAMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 14, "parameter": "KAVRAMA HAVA BASINCI KONT.( 5-6 BAR ARASI OLMALI ÖLÇÜLEN DEĞER RAKAMSAL OLARAK YAZILMALI )", "period": "(YIL/4)", "input_type": "numeric"},
+        {"no": 15, "parameter": "KLAMP HİD.BASINCI KONT.( 250 BAR OLMALI ÖLÇÜLEN DEĞER RAKAMSAL OLARAK YAZILMALI )", "period": "(YIL/4)", "input_type": "numeric"},
+        {"no": 16, "parameter": "KLAMP HİD.TANK HAVA BASINCI KONT. (2.5 BAR OLMALI ÖLÇÜLEN DEĞER RAKAMSAL OLARAK YAZILMALI )", "period": "(YIL/4)", "input_type": "numeric"},
+        {"no": 17, "parameter": "MAKINA GENEL TEMİZLİĞİ", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 18, "parameter": "BUTON KONTAKLARININ DEĞİŞİMİ", "period": "(YIL/1)", "input_type": "check"},
+        {"no": 19, "parameter": "MOTOR KLEMENS BAĞLANTI KONTROLÜ\n(KLEMENS KUTUSUNU AÇ, GEVŞEK CİVATALARI SIK)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 20, "parameter": "KAVRAMA GRUP BAKIMI - SERVİS KONTROLÜ\n(BALATA VE BURÇ KONTROLÜ YAP. DİSK BALATA ARASI MESAFE MAX 1,5mm OLMALI)", "period": "(YIL/1)", "input_type": "check"},
+        {"no": 21, "parameter": "PNÖMATİK SİSTEMİN VE YAĞLAYICILARIN KONTROLU\n(EYE-MARK KONTROLÜ)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 22, "parameter": "HİDROLİK SİGORTA DOLDURMA HAVA HATTI YAĞLAYICISI\n(YAĞ SEVİYESİ İŞARETLİ NOKTALAR ARASINDA OLMALI)", "period": "(YIL/4)", "input_type": "check"},
+        {"no": 23, "parameter": "ENCODER KAYIŞININ KONTROL EDİLMESİ   (Gevşeme,Çatlak ve Kopma Olmamalı)", "period": "(YIL/4)", "input_type": "check"},
+    ]
+
+    @classmethod
+    def build_default_periodic_sheet_data(cls) -> Dict[str, Any]:
+        empty_months = {m: "" for m in cls.PERIODIC_MONTHS}
+        rows = []
+        for item in cls.DEFAULT_PERIODIC_ROWS:
+            rows.append({
+                "no": item["no"],
+                "parameter": item["parameter"],
+                "period": item["period"],
+                "input_type": item["input_type"],
+                "months": dict(empty_months),
+                "notes": ""
+            })
+        return {
+            "dates": dict(empty_months),
+            "rows": rows,
+            "performed_by": dict(empty_months),
+            "approved_by": dict(empty_months),
+        }
+
+    @classmethod
+    def export_periodic_sheet_excel_bytes(
+        cls,
+        machine: Any,
+        sheet_data: Dict[str, Any],
+        year: int = 2026,
+        doc_no: str = "FR-PE-0446",
+        revision: str = "Rev. 9.10.2026",
+        title: Optional[str] = None
+    ) -> Tuple[bytes, str]:
+        """
+        FR-PE-0446 PERİYODİK BAKIM KONTROL LİSTESİ formatında Excel (.xlsx) üretir.
+        """
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "FR-PE-0446"
+        ws.views.sheetView[0].showGridLines = True
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+        # Sütunlar: A=NO, B=KONTROL PARAMETRELERİ, C=PERİYOD, D..O=12 AY, P=AÇIKLAMALAR (16 sütun)
+        ws.column_dimensions["A"].width = 6.0
+        ws.column_dimensions["B"].width = 48.0
+        ws.column_dimensions["C"].width = 10.0
+        for col_idx in range(4, 16):
+            ws.column_dimensions[get_column_letter(col_idx)].width = 9.5
+        ws.column_dimensions["P"].width = 24.0
+
+        thin = Side(border_style="thin", color="000000")
+        medium = Side(border_style="medium", color="000000")
+        cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        header_border = Border(left=thin, right=thin, top=medium, bottom=medium)
+
+        title_font = Font(name="Calibri", size=14, bold=True)
+        meta_font = Font(name="Calibri", size=10, bold=False)
+        meta_bold = Font(name="Calibri", size=10, bold=True)
+        hdr_font = Font(name="Calibri", size=9, bold=True)
+        data_font = Font(name="Calibri", size=9, bold=False)
+        check_font = Font(name="Calibri", size=11, bold=True, color="047857")
+        fail_font = Font(name="Calibri", size=11, bold=True, color="DC2626")
+
+        title_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+        hdr_fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+        sub_fill = PatternFill(start_color="EEF2FF", end_color="EEF2FF", fill_type="solid")
+
+        machine_code = getattr(machine, "code", "") or ""
+        machine_name = getattr(machine, "name", "") or ""
+        form_title = (title or f"{machine_code} {machine_name} PERİYODİK BAKIM KONTROL LİSTESİ").strip()
+
+        # Satır 1: Ana Başlık
+        ws.row_dimensions[1].height = 28
+        ws.merge_cells("A1:P1")
+        ws["A1"] = form_title
+        ws["A1"].font = title_font
+        ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+        ws["A1"].fill = title_fill
+        for c in range(1, 17):
+            ws.cell(1, c).border = header_border
+
+        ws.row_dimensions[2].height = 6
+
+        # Satır 3: Meta Bilgiler
+        ws.row_dimensions[3].height = 20
+        ws.merge_cells("A3:B3")
+        ws["A3"] = "Sayfa no: 1 / 1"
+        ws["A3"].font = meta_font
+        ws["A3"].alignment = Alignment(horizontal="left", vertical="center")
+
+        ws.merge_cells("C3:E3")
+        ws["C3"] = revision or "Rev. 9.10.2026"
+        ws["C3"].font = meta_font
+        ws["C3"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells("F3:K3")
+        ws["F3"] = f"Doküman no: {doc_no or 'FR-PE-0446'}  ({year})"
+        ws["F3"].font = meta_bold
+        ws["F3"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells("L3:P3")
+        ws["L3"] = "Otomotiv Parçaları San. ve Tic. A.Ş."
+        ws["L3"].font = meta_bold
+        ws["L3"].alignment = Alignment(horizontal="right", vertical="center")
+        for c in range(1, 17):
+            ws.cell(3, c).border = cell_border
+
+        # Satır 4-5: Tablo Başlıkları
+        ws.row_dimensions[4].height = 22
+        ws.row_dimensions[5].height = 22
+
+        ws.merge_cells("A4:A5")
+        ws["A4"] = "NO:"
+        ws.merge_cells("B4:B5")
+        ws["B4"] = "KONTROL PARAMETRELERİ"
+        ws.merge_cells("C4:C5")
+        ws["C4"] = "PERİYOD"
+        ws.merge_cells("D4:O4")
+        ws["D4"] = "BAKIM YAPILAN AY VE HAFTALAR"
+        ws.merge_cells("P4:P5")
+        ws["P4"] = "AÇIKLAMALAR"
+
+        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+            ws.cell(5, idx, value=m_name)
+
+        for r in (4, 5):
+            for c in range(1, 17):
+                cell = ws.cell(r, c)
+                cell.font = hdr_font
+                cell.fill = hdr_fill
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                cell.border = header_border
+
+        # Satır 6: BAKIM HAFTA VE TARİH
+        ws.row_dimensions[6].height = 22
+        ws["A6"] = ""
+        ws["B6"] = "BAKIM HAFTA VE TARİH"
+        ws["B6"].font = meta_bold
+        ws["B6"].alignment = Alignment(horizontal="left", vertical="center")
+        ws["C6"] = ""
+        dates_map = sheet_data.get("dates") or {}
+        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+            c_cell = ws.cell(6, idx, value=str(dates_map.get(m_name, "") or ""))
+            c_cell.font = data_font
+            c_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for c in range(1, 17):
+            ws.cell(6, c).fill = sub_fill
+            ws.cell(6, c).border = cell_border
+
+        # Satır 7+: Parametre Satırları
+        rows = sheet_data.get("rows") or []
+        cur_row = 7
+        for i, row_item in enumerate(rows, start=1):
+            ws.row_dimensions[cur_row].height = 28
+            ws.cell(cur_row, 1, value=row_item.get("no", i)).alignment = Alignment(horizontal="center", vertical="center")
+            ws.cell(cur_row, 1).font = meta_bold
+
+            p_cell = ws.cell(cur_row, 2, value=str(row_item.get("parameter", "") or ""))
+            p_cell.font = data_font
+            p_cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+            per_cell = ws.cell(cur_row, 3, value=str(row_item.get("period", "") or ""))
+            per_cell.font = data_font
+            per_cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            months_map = row_item.get("months") or {}
+            for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+                val = str(months_map.get(m_name, "") or "")
+                m_cell = ws.cell(cur_row, idx, value=val)
+                if val == "✓":
+                    m_cell.font = check_font
+                elif val == "✗":
+                    m_cell.font = fail_font
+                else:
+                    m_cell.font = data_font
+                m_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+            n_cell = ws.cell(cur_row, 16, value=str(row_item.get("notes", "") or ""))
+            n_cell.font = data_font
+            n_cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+            for c in range(1, 17):
+                ws.cell(cur_row, c).border = cell_border
+            cur_row += 1
+
+        # KONTROLÜ YAPAN satırı
+        ws.row_dimensions[cur_row].height = 24
+        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=3)
+        ws.cell(cur_row, 1, value="KONTROLÜ YAPAN").font = meta_bold
+        ws.cell(cur_row, 1).alignment = Alignment(horizontal="left", vertical="center")
+        perf_map = sheet_data.get("performed_by") or {}
+        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+            c_cell = ws.cell(cur_row, idx, value=str(perf_map.get(m_name, "") or ""))
+            c_cell.font = data_font
+            c_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for c in range(1, 17):
+            ws.cell(cur_row, c).border = cell_border
+            ws.cell(cur_row, c).fill = title_fill
+        cur_row += 1
+
+        # ONAY satırı
+        ws.row_dimensions[cur_row].height = 24
+        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=3)
+        ws.cell(cur_row, 1, value="ONAY").font = meta_bold
+        ws.cell(cur_row, 1).alignment = Alignment(horizontal="left", vertical="center")
+        appr_map = sheet_data.get("approved_by") or {}
+        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+            c_cell = ws.cell(cur_row, idx, value=str(appr_map.get(m_name, "") or ""))
+            c_cell.font = data_font
+            c_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for c in range(1, 17):
+            ws.cell(cur_row, c).border = cell_border
+            ws.cell(cur_row, c).fill = title_fill
+        cur_row += 1
+
+        # Dipnot
+        ws.row_dimensions[cur_row].height = 20
+        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=16)
+        note_cell = ws.cell(
+            cur_row, 1,
+            value="NOT: KONTROL EDİLEN HER PAREMETRENİN KARŞINDAKİ KUTUCUĞA BAKIM YAPTIĞI AYA AİT HAFTA NUMARASI YAZILACAKTIR."
+        )
+        note_cell.font = Font(name="Calibri", size=9, italic=True, bold=True)
+        note_cell.alignment = Alignment(horizontal="left", vertical="center")
+
+        safe_code = re.sub(r"[^A-Za-z0-9_-]+", "_", machine_code).strip("_") or "MAKINE"
+        export_filename = f"FR-PE-0446_{safe_code}_{year}.xlsx"
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        wb.close()
+        buffer.seek(0)
+        return buffer.getvalue(), export_filename
+

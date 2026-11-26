@@ -134,6 +134,16 @@ class MachineTcfRecordResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class MachinePeriodicSheetSave(BaseModel):
+    year: int = 2026
+    doc_no: Optional[str] = "FR-PE-0446"
+    revision: Optional[str] = "Rev. 9.10.2026"
+    title: Optional[str] = None
+    dates: dict = {}
+    rows: List[dict] = []
+    performed_by: dict = {}
+    approved_by: dict = {}
+
 class MachineResponse(MachineBase):
     id: int
     total_downtime_minutes: int

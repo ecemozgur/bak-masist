@@ -893,21 +893,28 @@
           </div>
         </div>
 
-        <!-- FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesi İndirme -->
-        <div class="mt-4 p-4 bg-blue-50/70 rounded-xl border border-blue-200 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <!-- FR-PE-0006 & FR-PE-0446 Makine Bazlı Excel İndirme -->
+        <div class="mt-4 p-4 bg-blue-50/70 rounded-xl border border-blue-200 flex flex-col lg:flex-row lg:items-end justify-between gap-3">
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1">
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
               <span class="px-2 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold">FR-PE-0006</span>
-              <span class="text-xs font-bold text-slate-800">Makina ve Teçhizat Arıza, Bakım Çizelgesi İndir</span>
+              <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-bold">FR-PE-0446</span>
+              <span class="text-xs font-bold text-slate-800">Makine Bazlı Çizelge & Periyodik Kontrol İndir</span>
             </div>
             <select id="excelFrPe0006MachineSelect" class="w-full sm:max-w-md px-3 py-2 text-xs sm:text-sm border border-blue-300 rounded-lg bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none">
               <option value="">-- Makine Seçin --</option>
             </select>
           </div>
-          <button type="button" onclick="downloadFrPe0006FromCenter()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition active:scale-95 shrink-0">
-            <i data-lucide="download" class="w-4 h-4"></i>
-            <span>FR-PE-0006 Çizelgesini İndir (.xlsx)</span>
-          </button>
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button type="button" onclick="downloadFrPe0006FromCenter()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition active:scale-95">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>FR-PE-0006 İndir (.xlsx)</span>
+            </button>
+            <button type="button" onclick="downloadFrPe0446FromCenter()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition active:scale-95">
+              <i data-lucide="clipboard-check" class="w-4 h-4"></i>
+              <span>FR-PE-0446 Periyodik İndir (.xlsx)</span>
+            </button>
+          </div>
         </div>
 
         <!-- Takvim ve Filtre Alanı -->
@@ -1477,74 +1484,129 @@
     </div>
   </div>
 
-  <!-- ================= PERİYODİK KONTROL MODALI ================= -->
-  <div id="machinePeriodicModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[55] hidden flex items-center justify-center p-2 sm:p-4">
-    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-300">
-      <div class="px-4 sm:px-5 py-3 bg-indigo-950 text-white flex items-center justify-between gap-3">
+  <!-- ================= FR-PE-0446 PERİYODİK BAKIM KONTROL LİSTESİ MODALI ================= -->
+  <div id="machinePeriodicModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[55] hidden flex items-center justify-center p-2 sm:p-3">
+    <div class="bg-white rounded-2xl max-w-[96vw] w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden border border-slate-300">
+      <!-- Üst Aksiyon Barı -->
+      <div class="px-4 sm:px-5 py-3 bg-indigo-950 text-white flex flex-wrap items-center justify-between gap-2.5">
         <div class="flex items-center gap-2.5 min-w-0">
           <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
             <i data-lucide="clipboard-check" class="w-4 h-4"></i>
           </div>
           <div class="min-w-0">
-            <h3 class="text-xs sm:text-sm font-bold truncate">Periyodik Kontrol</h3>
-            <p id="periodicMachineLabel" class="text-[11px] text-indigo-300 truncate">-</p>
+            <h3 class="text-xs sm:text-sm font-bold truncate">PERİYODİK BAKIM KONTROL LİSTESİ</h3>
+            <p id="periodicMachineLabel" class="text-[11px] text-indigo-300 truncate">Doküman no: FR-PE-0446 • Rev. 9.10.2026</p>
           </div>
         </div>
-        <button type="button" onclick="closeMachinePeriodicModal()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-indigo-900 transition">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+          <select id="periodicYearSelect" onchange="changePeriodicSheetYear()" class="px-2.5 py-1.5 bg-indigo-900 text-white border border-indigo-700 rounded-lg text-xs font-bold focus:outline-none">
+            <option value="2025">2025</option>
+            <option value="2026" selected>2026</option>
+            <option value="2027">2027</option>
+          </select>
+          <button type="button" onclick="downloadMachinePeriodicExcel()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition active:scale-95">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Excel İndir</span>
+          </button>
+          <button type="button" id="btnSavePeriodicSheet" onclick="saveMachinePeriodicSheet()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition active:scale-95">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+            <span>Kaydet</span>
+          </button>
+          <button type="button" onclick="closeMachinePeriodicModal()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-indigo-900 transition" title="Kapat">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
       </div>
 
-      <div class="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
-        <form onsubmit="submitMachinePeriodicCheck(event)" class="bg-indigo-50/60 border border-indigo-200 rounded-xl p-3.5 space-y-3 text-xs">
-          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-            <div>
-              <label class="block font-bold text-slate-700 mb-1">Tarih</label>
-              <input type="text" id="periodicDateInput" placeholder="GG.AA.YYYY" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-semibold">
-            </div>
-            <div>
-              <label class="block font-bold text-slate-700 mb-1">Kontrol Periyodu</label>
-              <select id="periodicTypeInput" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-semibold">
-                <option value="GÜNLÜK">GÜNLÜK</option>
-                <option value="HAFTALIK">HAFTALIK</option>
-                <option value="AYLIK">AYLIK</option>
-                <option value="YILLIK">YILLIK</option>
-              </select>
-            </div>
-            <div>
-              <label class="block font-bold text-slate-700 mb-1">Durum</label>
-              <select id="periodicStatusInput" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-semibold">
-                <option value="UYGUN">UYGUN</option>
-                <option value="UYGUN DEĞİL">UYGUN DEĞİL</option>
-              </select>
-            </div>
-            <div>
-              <label class="block font-bold text-slate-700 mb-1">Kontrol Eden</label>
-              <select id="periodicOperatorInput" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-semibold">
-                <option value="">-- Personel Seçin --</option>
-              </select>
-            </div>
+      <!-- FR-PE-0446 Resmi Form Başlık Bloğu -->
+      <div class="px-3 sm:px-5 pt-3 pb-2 bg-slate-50 border-b border-slate-200">
+        <div class="border border-slate-300 bg-white rounded-xl overflow-hidden">
+          <div class="py-2 px-4 text-center border-b border-slate-300 bg-slate-100/70">
+            <h4 id="periodicFormTitle" class="text-xs sm:text-sm font-extrabold tracking-wide text-slate-900">PERİYODİK BAKIM KONTROL LİSTESİ</h4>
           </div>
-          <div class="flex flex-col sm:flex-row gap-2">
-            <input type="text" id="periodicNotesInput" placeholder="Kontrol açıklaması / notlar..." class="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg bg-white">
-            <button type="submit" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shrink-0 transition">+ Kontrol Ekle</button>
+          <div class="grid grid-cols-2 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-slate-200 text-[11px] font-semibold text-slate-700">
+            <div class="px-3 py-1.5">Sayfa no: <span class="font-bold text-slate-900">1 / 1</span></div>
+            <div class="px-3 py-1.5" id="periodicFormRev">Rev. 9.10.2026</div>
+            <div class="px-3 py-1.5">Doküman no: <span id="periodicFormDocNo" class="font-bold text-slate-900">FR-PE-0446</span></div>
+            <div class="px-3 py-1.5 md:text-right font-bold text-slate-800">Otomotiv Parçaları San. ve Tic. A.Ş.</div>
           </div>
-        </form>
+        </div>
+      </div>
 
-        <div class="overflow-x-auto border border-slate-200 rounded-xl">
-          <table class="w-full text-xs border-collapse">
-            <thead class="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
-              <tr>
-                <th class="p-2.5 text-center border-b border-slate-200">Tarih</th>
-                <th class="p-2.5 text-center border-b border-slate-200">Periyot</th>
-                <th class="p-2.5 text-center border-b border-slate-200">Durum</th>
-                <th class="p-2.5 text-left border-b border-slate-200">Notlar</th>
-                <th class="p-2.5 text-center border-b border-slate-200">Kontrol Eden</th>
-                <th class="p-2.5 text-center border-b border-slate-200 w-16">Sil</th>
+      <!-- 12 Aylık İnteraktif Kontrol Tablosu -->
+      <div class="p-3 sm:p-4 overflow-auto flex-1 custom-scrollbar bg-white">
+        <div class="overflow-x-auto border border-slate-300 rounded-xl">
+          <table class="w-full text-[11px] border-collapse min-w-[1380px]">
+            <thead>
+              <tr class="bg-slate-800 text-white font-bold uppercase text-center">
+                <th rowspan="2" class="border border-slate-600 px-1.5 py-2 w-10">NO:</th>
+                <th rowspan="2" class="border border-slate-600 px-2 py-2 min-w-[290px] text-left">KONTROL PARAMETRELERİ</th>
+                <th rowspan="2" class="border border-slate-600 px-1.5 py-2 w-16">PERİYOD</th>
+                <th colspan="12" class="border border-slate-600 px-2 py-1.5 bg-indigo-900">BAKIM YAPILAN AY VE HAFTALAR</th>
+                <th rowspan="2" class="border border-slate-600 px-2 py-2 min-w-[160px]">AÇIKLAMALAR</th>
+              </tr>
+              <tr class="bg-slate-700 text-white font-bold text-[10px] text-center">
+                <th class="border border-slate-600 px-1 py-1.5 w-16">NİSAN</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">MAYIS</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">HAZİRAN</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">TEMMUZ</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">AĞUSTOS</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">EYLÜL</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">EKİM</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">KASIM</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">ARALIK</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">OCAK</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">ŞUBAT</th>
+                <th class="border border-slate-600 px-1 py-1.5 w-16">MART</th>
               </tr>
             </thead>
-            <tbody id="machinePeriodicTableBody" class="divide-y divide-slate-100"></tbody>
+            <tbody id="machinePeriodicTableBody" class="divide-y divide-slate-200 bg-white"></tbody>
           </table>
+        </div>
+
+        <!-- Yeni Parametre Ekleme Formu (Opsiyonel) -->
+        <form id="periodicAddParamForm" onsubmit="addCustomPeriodicParam(event)" class="hidden mt-3 bg-indigo-50/70 border border-indigo-200 rounded-xl p-3 flex flex-wrap items-end gap-2 text-xs">
+          <div class="flex-1 min-w-[220px]">
+            <label class="block font-bold text-slate-700 mb-1">Yeni Kontrol Parametresi *</label>
+            <input type="text" id="newPeriodicParamText" required placeholder="örn: HİDROLİK YAĞ SICAKLIĞI KONTROLÜ..." class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white">
+          </div>
+          <div class="w-28">
+            <label class="block font-bold text-slate-700 mb-1">Periyod</label>
+            <input type="text" id="newPeriodicParamPeriod" value="(YIL/4)" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-center font-semibold">
+          </div>
+          <div class="w-40">
+            <label class="block font-bold text-slate-700 mb-1">Giriş Tipi</label>
+            <select id="newPeriodicParamType" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-semibold">
+              <option value="check">Tik (✓ / ✗)</option>
+              <option value="numeric">Numerik Değer</option>
+            </select>
+          </div>
+          <button type="submit" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold">Ekle</button>
+          <button type="button" onclick="toggleAddPeriodicParamForm(false)" class="px-3 py-1.5 bg-white border border-slate-300 text-slate-600 rounded-lg font-semibold">Vazgeç</button>
+        </form>
+
+        <p class="text-[11px] font-bold italic text-slate-600 mt-2.5">
+          NOT: KONTROL EDİLEN HER PAREMETRENİN KARŞINDAKİ KUTUCUĞA BAKIM YAPTIĞI AYA AİT HAFTA NUMARASI YAZILACAKTIR.
+        </p>
+      </div>
+
+      <!-- Alt Bar -->
+      <div class="px-4 sm:px-5 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2 text-[11px] text-slate-500">
+          <span>Tik kutularına tıklayarak <b class="text-emerald-700">✓</b> / <b class="text-rose-600">✗</b> işaretleyin; basınç satırlarına numerik değer yazın.</span>
+          <span id="periodicLastSavedInfo" class="text-indigo-700 font-semibold"></span>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="toggleAddPeriodicParamForm()" class="px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded-lg text-xs font-bold transition">+ Parametre Ekle</button>
+          <button type="button" onclick="downloadMachinePeriodicExcel()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Excel İndir</span>
+          </button>
+          <button type="button" onclick="saveMachinePeriodicSheet()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+            <span>Kaydet</span>
+          </button>
+          <button type="button" onclick="closeMachinePeriodicModal()" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-bold transition">Kapat</button>
         </div>
       </div>
     </div>

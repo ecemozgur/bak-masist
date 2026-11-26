@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime
 from typing import List, Optional
@@ -15,13 +16,14 @@ from app.config import (
     DORUK_ENABLED, SESSION_COOKIE_NAME, SESSION_TTL_DAYS, now_tr
 )
 from app.database import get_db, engine, Base
-from app.models import User, Machine, MachineSubfolder, MachineMaintenanceRow, MachineTcfRecord, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask, PeriodicCheck
+from app.models import User, Machine, MachineSubfolder, MachineMaintenanceRow, MachineTcfRecord, MachinePeriodicSheet, MaintenanceLog, ChatMessage, DorukSyncLog, HandoverTask, PeriodicCheck
 from app.schemas import (
     UserLogin, UserCreate, UserUpdate, UserResponse, MachineResponse, MachineCreate,
     MachineSubfolderCreate, MachineSubfolderResponse,
     MachineMaintenanceRowCreate, MachineMaintenanceRowUpdate, MachineMaintenanceRowResponse,
     MachinePeriodicCheckCreate, MachinePeriodicCheckResponse,
     MachineTcfRecordCreate, MachineTcfRecordResponse,
+    MachinePeriodicSheetSave,
     MaintenanceLogCreate, MaintenanceLogResponse,
     VoiceParseRequest, VoiceParseResponse,
     ChatQueryRequest, ChatQueryResponse, DorukPullRequest,
@@ -369,9 +371,19 @@ def get_machine_folder(
         MachineMaintenanceRow.machine_id == machine.id
     ).order_by(MachineMaintenanceRow.id.asc()).all()
 
-    periodic_count = db.query(PeriodicCheck).filter(
-        PeriodicCheck.machine_id == machine.id
-    ).count()
+    periodic_count = 0
+    latest_periodic = db.query(MachinePeriodicSheet).filter(
+        MachinePeriodicSheet.machine_id == machine.id
+    ).order_by(MachinePeriodicSheet.year.desc()).first()
+    if latest_periodic and latest_periodic.sheet_json:
+        try:
+            pdata = json.loads(latest_periodic.sheet_json)
+            for prow in pdata.get("rows", []):
+                for v in (prow.get("months") or {}).values():
+                    if str(v or "").strip():
+                        periodic_count += 1
+        except Exception:
+            pass
 
     tcf_count = db.query(MachineTcfRecord).filter(
         MachineTcfRecord.machine_id == machine.id
@@ -733,6 +745,164 @@ def delete_machine_tcf_record(
     db.delete(rec)
     db.commit()
     return {"status": "ok"}
+
+@app.get("/api/machines/{machine_code}/periodic-sheet")
+def get_machine_periodic_sheet(
+    machine_code: str,
+    year: Optional[int] = None,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """FR-PE-0446 Periyodik Bakım Kontrol Listesini (yıllık 12 ay matrisi) getirir; yoksa 23 standart parametreyle oluşturur."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+
+    target_year = year or now_tr().year
+    sheet = db.query(MachinePeriodicSheet).filter(
+        MachinePeriodicSheet.machine_id == machine.id,
+        MachinePeriodicSheet.year == target_year
+    ).first()
+
+    if sheet and sheet.sheet_json:
+        try:
+            data = json.loads(sheet.sheet_json)
+        except Exception:
+            data = ExcelService.build_default_periodic_sheet_data()
+        return {
+            "machine_code": machine.code,
+            "machine_name": machine.name,
+            "year": sheet.year,
+            "doc_no": sheet.doc_no or "FR-PE-0446",
+            "revision": sheet.revision or "Rev. 9.10.2026",
+            "title": sheet.title or f"{machine.code} {machine.name} PERİYODİK BAKIM KONTROL LİSTESİ",
+            "months": ExcelService.PERIODIC_MONTHS,
+            "dates": data.get("dates", {}),
+            "rows": data.get("rows", []),
+            "performed_by": data.get("performed_by", {}),
+            "approved_by": data.get("approved_by", {}),
+            "updated_by": sheet.updated_by,
+            "updated_at": sheet.updated_at.strftime("%d.%m.%Y %H:%M") if sheet.updated_at else None
+        }
+
+    default_data = ExcelService.build_default_periodic_sheet_data()
+    return {
+        "machine_code": machine.code,
+        "machine_name": machine.name,
+        "year": target_year,
+        "doc_no": "FR-PE-0446",
+        "revision": "Rev. 9.10.2026",
+        "title": f"{machine.code} {machine.name} PERİYODİK BAKIM KONTROL LİSTESİ",
+        "months": ExcelService.PERIODIC_MONTHS,
+        "dates": default_data["dates"],
+        "rows": default_data["rows"],
+        "performed_by": default_data["performed_by"],
+        "approved_by": default_data["approved_by"],
+        "updated_by": None,
+        "updated_at": None
+    }
+
+@app.put("/api/machines/{machine_code}/periodic-sheet")
+def save_machine_periodic_sheet(
+    machine_code: str,
+    payload: MachinePeriodicSheetSave,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """FR-PE-0446 Periyodik Bakım Kontrol Listesini kaydeder."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+
+    target_year = payload.year or now_tr().year
+    sheet = db.query(MachinePeriodicSheet).filter(
+        MachinePeriodicSheet.machine_id == machine.id,
+        MachinePeriodicSheet.year == target_year
+    ).first()
+
+    sheet_dict = {
+        "dates": payload.dates or {},
+        "rows": payload.rows or [],
+        "performed_by": payload.performed_by or {},
+        "approved_by": payload.approved_by or {},
+    }
+    serialized = json.dumps(sheet_dict, ensure_ascii=False)
+    default_title = f"{machine.code} {machine.name} PERİYODİK BAKIM KONTROL LİSTESİ"
+
+    if not sheet:
+        sheet = MachinePeriodicSheet(
+            machine_id=machine.id,
+            year=target_year,
+            doc_no=(payload.doc_no or "FR-PE-0446").strip(),
+            revision=(payload.revision or "Rev. 9.10.2026").strip(),
+            title=(payload.title or default_title).strip(),
+            sheet_json=serialized,
+            updated_by=current_user.full_name,
+            updated_at=now_tr()
+        )
+        db.add(sheet)
+    else:
+        sheet.doc_no = (payload.doc_no or sheet.doc_no or "FR-PE-0446").strip()
+        sheet.revision = (payload.revision or sheet.revision or "Rev. 9.10.2026").strip()
+        sheet.title = (payload.title or sheet.title or default_title).strip()
+        sheet.sheet_json = serialized
+        sheet.updated_by = current_user.full_name
+        sheet.updated_at = now_tr()
+
+    db.commit()
+    db.refresh(sheet)
+    return {
+        "status": "ok",
+        "year": sheet.year,
+        "updated_by": sheet.updated_by,
+        "updated_at": sheet.updated_at.strftime("%d.%m.%Y %H:%M") if sheet.updated_at else None
+    }
+
+@app.get("/api/machines/{machine_code}/periodic-sheet/export")
+def export_machine_periodic_sheet(
+    machine_code: str,
+    year: Optional[int] = None,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """FR-PE-0446 Periyodik Bakım Kontrol Listesini Excel (.xlsx) olarak indirir."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+
+    target_year = year or now_tr().year
+    sheet = db.query(MachinePeriodicSheet).filter(
+        MachinePeriodicSheet.machine_id == machine.id,
+        MachinePeriodicSheet.year == target_year
+    ).first()
+
+    if sheet and sheet.sheet_json:
+        try:
+            sheet_data = json.loads(sheet.sheet_json)
+        except Exception:
+            sheet_data = ExcelService.build_default_periodic_sheet_data()
+        doc_no = sheet.doc_no or "FR-PE-0446"
+        revision = sheet.revision or "Rev. 9.10.2026"
+        title = sheet.title or f"{machine.code} {machine.name} PERİYODİK BAKIM KONTROL LİSTESİ"
+    else:
+        sheet_data = ExcelService.build_default_periodic_sheet_data()
+        doc_no = "FR-PE-0446"
+        revision = "Rev. 9.10.2026"
+        title = f"{machine.code} {machine.name} PERİYODİK BAKIM KONTROL LİSTESİ"
+
+    excel_bytes, filename = ExcelService.export_periodic_sheet_excel_bytes(
+        machine=machine,
+        sheet_data=sheet_data,
+        year=target_year,
+        doc_no=doc_no,
+        revision=revision,
+        title=title
+    )
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 # ----------------- SESLİ RAPOR AYRIŞTIRMA (STT & NLP) -----------------
 
