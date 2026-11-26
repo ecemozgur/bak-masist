@@ -1508,6 +1508,14 @@ async function openMachineScheduleModal() {
   editingScheduleRowId = null;
   isAddingScheduleRow = false;
 
+  if (!Array.isArray(allUsers) || allUsers.length === 0) {
+    try {
+      await loadUsers();
+    } catch (e) {
+      console.warn("Kullanıcı listesi yüklenemedi:", e);
+    }
+  }
+
   const labelEl = document.getElementById("scheduleMachineLabel");
   if (labelEl) {
     labelEl.innerText = activeFolderMachineInfo
@@ -1517,6 +1525,31 @@ async function openMachineScheduleModal() {
 
   document.getElementById("machineScheduleModal").classList.remove("hidden");
   await refreshMachineScheduleRows();
+}
+
+function buildScheduleOperatorOptions(selectedValue = "") {
+  const cleanSelected = (selectedValue || "").trim();
+  const activeNames = (allUsers || [])
+    .filter(u => u && u.is_active !== false && u.full_name)
+    .map(u => String(u.full_name).trim());
+
+  const uniqueNames = Array.from(new Set(activeNames));
+  if (cleanSelected && !uniqueNames.includes(cleanSelected)) {
+    uniqueNames.unshift(cleanSelected);
+  }
+
+  let options = `<option value="">-- Personel Seçin --</option>`;
+  options += uniqueNames.map(name => {
+    const sel = name === cleanSelected ? " selected" : "";
+    return `<option value="${escapeHtml(name)}"${sel}>${escapeHtml(name)}</option>`;
+  }).join("");
+  return options;
+}
+
+function downloadMachineScheduleExcel() {
+  if (!activeFolderMachineCode) return;
+  const url = `/api/machines/${encodeURIComponent(activeFolderMachineCode)}/maintenance-rows/export`;
+  window.location.href = url;
 }
 
 function closeMachineScheduleModal() {
@@ -1580,7 +1613,7 @@ function renderMachineScheduleTable() {
             <td class="border border-slate-300 p-1.5"><input id="sched-edit-mold" type="text" value="${escapeHtml(row.mold_shot_count || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
             <td class="border border-slate-300 p-1.5"><input id="sched-edit-notif" type="text" value="${escapeHtml(row.notification_no || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
             <td class="border border-slate-300 p-1.5"><input id="sched-edit-mat" type="text" value="${escapeHtml(row.used_material || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
-            <td class="border border-slate-300 p-1.5"><input id="sched-edit-perf" type="text" value="${escapeHtml(row.performed_by || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
+            <td class="border border-slate-300 p-1.5"><select id="sched-edit-perf" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white font-medium">${buildScheduleOperatorOptions(row.performed_by || '')}</select></td>
             <td class="border border-slate-300 p-1.5"><input id="sched-edit-appr" type="text" value="${escapeHtml(row.approved_by || '')}" class="w-full px-2 py-1 text-xs border border-amber-400 rounded bg-white"></td>
             <td class="border border-slate-300 p-1.5 text-center whitespace-nowrap">
               <div class="flex items-center justify-center gap-1">
@@ -1630,7 +1663,7 @@ function renderMachineScheduleTable() {
         <td class="border border-slate-300 p-1.5"><input id="sched-new-mold" type="text" placeholder="Baskı sayısı" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
         <td class="border border-slate-300 p-1.5"><input id="sched-new-notif" type="text" placeholder="Bildirim no" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
         <td class="border border-slate-300 p-1.5"><input id="sched-new-mat" type="text" placeholder="A/S.Dahili" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
-        <td class="border border-slate-300 p-1.5"><input id="sched-new-perf" type="text" value="${escapeHtml(defaultUser)}" placeholder="İşi yapan" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
+        <td class="border border-slate-300 p-1.5"><select id="sched-new-perf" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white font-medium">${buildScheduleOperatorOptions(defaultUser)}</select></td>
         <td class="border border-slate-300 p-1.5"><input id="sched-new-appr" type="text" placeholder="Onay" class="w-full px-2 py-1 text-xs border border-emerald-400 rounded bg-white"></td>
         <td class="border border-slate-300 p-1.5 text-center whitespace-nowrap">
           <div class="flex items-center justify-center gap-1">

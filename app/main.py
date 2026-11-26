@@ -479,6 +479,27 @@ def delete_machine_subfolder(
     db.commit()
     return {"status": "ok"}
 
+@app.get("/api/machines/{machine_code}/maintenance-rows/export")
+def export_machine_maintenance_schedule(
+    machine_code: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """FR-PE-0006 Makina ve Teçhizat Arıza, Bakım Çizelgesini Excel (.xlsx) olarak indirir."""
+    machine = _find_machine_by_code(db, machine_code)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Makine bulunamadı!")
+    rows = db.query(MachineMaintenanceRow).filter(
+        MachineMaintenanceRow.machine_id == machine.id
+    ).order_by(MachineMaintenanceRow.id.asc()).all()
+
+    excel_bytes, filename = ExcelService.export_machine_schedule_excel_bytes(machine, rows)
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
 @app.get("/api/machines/{machine_code}/maintenance-rows", response_model=List[MachineMaintenanceRowResponse])
 def get_machine_maintenance_rows(
     machine_code: str,

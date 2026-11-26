@@ -674,3 +674,154 @@ class ExcelService:
         wb.close()
         return out_path
 
+    @classmethod
+    def export_machine_schedule_excel_bytes(cls, machine: Any, rows: list) -> Tuple[bytes, str]:
+        """
+        FR-PE-0006 MAKİNA VE TEÇHİZAT ARIZA, BAKIM ÇİZELGESİ formatında
+        makineye özel Excel (.xlsx) dosyasını bellekten (bytes) üretir.
+        """
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "FR-PE-0006"
+        ws.views.sheetView[0].showGridLines = True
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+        # 9 sütun genişlikleri (A..I)
+        col_widths = {
+            "A": 14.0,  # TARİH
+            "B": 28.0,  # ARIZA VE YAPILAN İŞİN TANIMI
+            "C": 38.0,  # YAPILAN İŞİN AÇIKLAMASI
+            "D": 22.0,  # DEĞİŞEN PARÇA
+            "E": 16.0,  # KALIP BASKI SAYISI
+            "F": 18.0,  # ARIZA-KAIZEN BİLDİRİM NO
+            "G": 18.0,  # KULLANILAN A/S.DAHİLİ
+            "H": 20.0,  # İŞİ YAPAN
+            "I": 16.0,  # ONAY
+        }
+        for col_letter, width in col_widths.items():
+            ws.column_dimensions[col_letter].width = width
+
+        thin = Side(border_style="thin", color="000000")
+        medium = Side(border_style="medium", color="000000")
+        cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        header_border = Border(left=thin, right=thin, top=medium, bottom=medium)
+        meta_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        title_font = Font(name="Calibri", size=14, bold=True)
+        meta_font = Font(name="Calibri", size=10, bold=False)
+        meta_bold_font = Font(name="Calibri", size=10, bold=True)
+        tbl_hdr_font = Font(name="Calibri", size=10, bold=True)
+        data_font = Font(name="Calibri", size=10, bold=False)
+
+        header_fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+        title_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+
+        # Satır 1: Ana Başlık
+        ws.row_dimensions[1].height = 28
+        ws.merge_cells("A1:I1")
+        ws["A1"] = "MAKİNA VE TEÇHİZAT ARIZA, BAKIM ÇİZELGESİ"
+        ws["A1"].font = title_font
+        ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+        ws["A1"].fill = title_fill
+        for c in range(1, 10):
+            ws.cell(1, c).border = header_border
+
+        # Satır 2: Boş ayırıcı
+        ws.row_dimensions[2].height = 8
+
+        # Satır 3: Doküman Meta Bilgileri
+        ws.row_dimensions[3].height = 20
+        ws.merge_cells("A3:B3")
+        ws["A3"] = "Sayfa no: 1 / 1"
+        ws["A3"].font = meta_font
+        ws["A3"].alignment = Alignment(horizontal="left", vertical="center")
+
+        ws["C3"] = "Rev.4.9.2020"
+        ws["C3"].font = meta_font
+        ws["C3"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells("D3:F3")
+        ws["D3"] = "Doküman no: FR-PE-0006"
+        ws["D3"].font = meta_bold_font
+        ws["D3"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells("G3:I3")
+        ws["G3"] = "Otomotiv Parçaları San. ve Tic. A.Ş."
+        ws["G3"].font = meta_bold_font
+        ws["G3"].alignment = Alignment(horizontal="right", vertical="center")
+
+        for c in range(1, 10):
+            ws.cell(3, c).border = meta_border
+
+        # Satır 4: Makine ve Teçhizat Adı
+        ws.row_dimensions[4].height = 22
+        ws.merge_cells("A4:I4")
+        machine_code = getattr(machine, "code", "") or ""
+        machine_name = getattr(machine, "name", "") or ""
+        machine_label = f"{machine_code} - {machine_name}".strip(" -")
+        ws["A4"] = f"  Makine ve Teçhizat Adı:  {machine_label}"
+        ws["A4"].font = meta_bold_font
+        ws["A4"].alignment = Alignment(horizontal="left", vertical="center")
+        for c in range(1, 10):
+            ws.cell(4, c).border = meta_border
+
+        # Satır 5: Boş ayırıcı
+        ws.row_dimensions[5].height = 8
+
+        # Satır 6: Tablo Başlıkları
+        ws.row_dimensions[6].height = 34
+        headers = [
+            "TARİH",
+            "ARIZA VE YAPILAN\nİŞİN TANIMI",
+            "YAPILAN İŞİN\nAÇIKLAMASI",
+            "DEĞİŞEN\nPARÇA",
+            "KALIP BASKI\nSAYISI",
+            "ARIZA-KAIZEN\nBİLDİRİM NO",
+            "KULLANILAN\nA/S.DAHİLİ",
+            "İŞİ\nYAPAN",
+            "ONAY",
+        ]
+        for idx, h_text in enumerate(headers, start=1):
+            cell = ws.cell(6, idx, value=h_text)
+            cell.font = tbl_hdr_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = header_border
+
+        # Satır 7+: Veri Satırları (en az 15 boş/dolu satır olacak şekilde form düzeni)
+        total_rows = max(len(rows), 15)
+        for i in range(total_rows):
+            r_idx = 7 + i
+            ws.row_dimensions[r_idx].height = 24
+            row_obj = rows[i] if i < len(rows) else None
+            values = [
+                getattr(row_obj, "date_str", "") if row_obj else "",
+                getattr(row_obj, "fault_work_title", "") if row_obj else "",
+                getattr(row_obj, "work_description", "") if row_obj else "",
+                getattr(row_obj, "replaced_part", "") if row_obj else "",
+                getattr(row_obj, "mold_shot_count", "") if row_obj else "",
+                getattr(row_obj, "notification_no", "") if row_obj else "",
+                getattr(row_obj, "used_material", "") if row_obj else "",
+                getattr(row_obj, "performed_by", "") if row_obj else "",
+                getattr(row_obj, "approved_by", "") if row_obj else "",
+            ]
+            for c_idx, val in enumerate(values, start=1):
+                cell = ws.cell(r_idx, c_idx, value=val or "")
+                cell.font = data_font
+                horiz = "center" if c_idx in (1, 5, 6, 8, 9) else "left"
+                cell.alignment = Alignment(horizontal=horiz, vertical="center", wrap_text=True)
+                cell.border = cell_border
+
+        safe_code = re.sub(r"[^A-Za-z0-9_-]+", "_", machine_code).strip("_") or "MAKINE"
+        export_filename = f"FR-PE-0006_{safe_code}.xlsx"
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        wb.close()
+        buffer.seek(0)
+        return buffer.getvalue(), export_filename
+

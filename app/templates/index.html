@@ -1339,10 +1339,16 @@
                 <p class="text-[11px] text-slate-500 mt-0.5 truncate">Rev.4.9.2020 • Otomotiv Parçaları San. ve Tic. A.Ş. • Açıp satır ekleyebilir ve düzenleyebilirsiniz</p>
               </div>
             </div>
-            <button type="button" class="px-3 py-1.5 bg-emerald-600 group-hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 transition">
-              <i data-lucide="table-2" class="w-3.5 h-3.5"></i>
-              <span>Aç</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" onclick="event.stopPropagation(); downloadMachineScheduleExcel()" class="px-2.5 py-1.5 bg-white hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1 transition" title="FR-PE-0006 Excel İndir">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">Excel İndir</span>
+              </button>
+              <button type="button" class="px-3 py-1.5 bg-emerald-600 group-hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                <i data-lucide="table-2" class="w-3.5 h-3.5"></i>
+                <span>Aç</span>
+              </button>
+            </div>
           </div>
 
           <div id="modalMachineSubfoldersList" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1373,6 +1379,10 @@
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
+          <button type="button" onclick="downloadMachineScheduleExcel()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition active:scale-95" title="Çizelgeyi Excel (.xlsx) olarak indir">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>Excel İndir</span>
+          </button>
           <button type="button" onclick="startAddScheduleRow()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition active:scale-95">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>Satır Ekle</span>
