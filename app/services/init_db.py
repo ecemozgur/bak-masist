@@ -107,6 +107,30 @@ def init_database():
         db.add_all(logs)
         db.commit()
 
+    # Fabrika yerleşim planındaki A, B, C Binası makinelerinin eksik olanlarını otomatik ekle
+    try:
+        from seed_layout_machines import LAYOUT_MACHINES
+        existing_codes = {code for (code,) in db.query(Machine.code).all()}
+        added_layout = 0
+        for item in LAYOUT_MACHINES:
+            code = item["code"].upper().strip()
+            if code not in existing_codes:
+                db.add(Machine(
+                    code=code,
+                    name=item["name"],
+                    department=item["building"],
+                    line=item["line"],
+                    model=item["model"],
+                    status="CALISIYOR",
+                    total_downtime_minutes=0
+                ))
+                existing_codes.add(code)
+                added_layout += 1
+        if added_layout > 0:
+            db.commit()
+    except Exception:
+        pass
+
     db.close()
 
 if __name__ == "__main__":
