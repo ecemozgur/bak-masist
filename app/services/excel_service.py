@@ -677,8 +677,8 @@ class ExcelService:
     @classmethod
     def export_machine_schedule_excel_bytes(cls, machine: Any, rows: list) -> Tuple[bytes, str]:
         """
-        FR-PE-0006 MAKİNA VE TEÇHİZAT ARIZA, BAKIM ÇİZELGESİ formatında
-        makineye özel Excel (.xlsx) dosyasını bellekten (bytes) üretir.
+        FR-PE-0006 MAKİNA VE TEÇHİZAT ARIZA, BAKIM ÇİZELGESİ resmi denetim formatında
+        (13 sütun A..M, satır 1..7 birebir başlık yerleşimi) Excel (.xlsx) üretir.
         """
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -690,17 +690,21 @@ class ExcelService:
         ws.page_setup.fitToHeight = 0
         ws.sheet_properties.pageSetUpPr.fitToPage = True
 
-        # 9 sütun genişlikleri (A..I)
+        # Resmi 13 sütun (A..M) genişlikleri
         col_widths = {
-            "A": 14.0,  # TARİH
-            "B": 28.0,  # ARIZA VE YAPILAN İŞİN TANIMI
-            "C": 38.0,  # YAPILAN İŞİN AÇIKLAMASI
-            "D": 22.0,  # DEĞİŞEN PARÇA
-            "E": 16.0,  # KALIP BASKI SAYISI
-            "F": 18.0,  # ARIZA-KAIZEN BİLDİRİM NO
-            "G": 18.0,  # KULLANILAN A/S.DAHİLİ
-            "H": 20.0,  # İŞİ YAPAN
-            "I": 16.0,  # ONAY
+            "A": 7.0,   # TARİH (A:B birleşik -> 14)
+            "B": 7.0,
+            "C": 14.0,  # ARIZA VE YAPILAN İŞİN TANIMI (C:D birleşik -> 28)
+            "D": 14.0,
+            "E": 19.0,  # YAPILAN İŞİN AÇIKLAMASI (E:F birleşik -> 38)
+            "F": 19.0,
+            "G": 11.0,  # DEĞİŞEN PARÇA (G:H birleşik -> 22)
+            "H": 11.0,
+            "I": 15.0,  # KALIP BASKI SAYISI
+            "J": 16.0,  # ARIZA-KAIZEN BİLDİRİM NO
+            "K": 16.0,  # KULLANILAN A/S.DAHİLİ
+            "L": 18.0,  # İŞİ YAPAN
+            "M": 14.0,  # ONAY
         }
         for col_letter, width in col_widths.items():
             ws.column_dimensions[col_letter].width = width
@@ -708,113 +712,144 @@ class ExcelService:
         thin = Side(border_style="thin", color="000000")
         medium = Side(border_style="medium", color="000000")
         cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
-        header_border = Border(left=thin, right=thin, top=medium, bottom=medium)
-        meta_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        hdr_top_border = Border(left=thin, right=thin, top=medium, bottom=None)
+        hdr_bot_border = Border(left=thin, right=thin, top=None, bottom=medium)
+        hdr_full_border = Border(left=thin, right=thin, top=medium, bottom=medium)
 
         title_font = Font(name="Calibri", size=14, bold=True)
         meta_font = Font(name="Calibri", size=10, bold=False)
         meta_bold_font = Font(name="Calibri", size=10, bold=True)
-        tbl_hdr_font = Font(name="Calibri", size=10, bold=True)
+        tbl_hdr_font = Font(name="Calibri", size=9, bold=True)
         data_font = Font(name="Calibri", size=10, bold=False)
 
-        header_fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
-        title_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
-
-        # Satır 1: Ana Başlık
-        ws.row_dimensions[1].height = 28
-        ws.merge_cells("A1:I1")
+        # Satır 1: Ana Başlık (A1:M1)
+        ws.row_dimensions[1].height = 26
+        ws.merge_cells("A1:M1")
         ws["A1"] = "MAKİNA VE TEÇHİZAT ARIZA, BAKIM ÇİZELGESİ"
         ws["A1"].font = title_font
         ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-        ws["A1"].fill = title_fill
-        for c in range(1, 10):
-            ws.cell(1, c).border = header_border
 
-        # Satır 2: Boş ayırıcı
-        ws.row_dimensions[2].height = 8
+        # Satır 2: Boş satır
+        ws.row_dimensions[2].height = 10
 
-        # Satır 3: Doküman Meta Bilgileri
+        # Satır 3: Resmi Doküman Meta Bilgileri (A3, D3, F3, K3:M3)
         ws.row_dimensions[3].height = 20
-        ws.merge_cells("A3:B3")
+        ws.merge_cells("A3:C3")
         ws["A3"] = "Sayfa no: 1 / 1"
         ws["A3"].font = meta_font
         ws["A3"].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws["C3"] = "Rev.4.9.2020"
-        ws["C3"].font = meta_font
-        ws["C3"].alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells("D3:E3")
+        ws["D3"] = "Rev.4.9.2020"
+        ws["D3"].font = meta_font
+        ws["D3"].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws.merge_cells("D3:F3")
-        ws["D3"] = "Doküman no: FR-PE-0006"
-        ws["D3"].font = meta_bold_font
-        ws["D3"].alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells("F3:J3")
+        ws["F3"] = "Doküman no:FR-PE-0006"
+        ws["F3"].font = meta_font
+        ws["F3"].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws.merge_cells("G3:I3")
-        ws["G3"] = "Otomotiv Parçaları San. ve Tic. A.Ş."
-        ws["G3"].font = meta_bold_font
-        ws["G3"].alignment = Alignment(horizontal="right", vertical="center")
+        ws.merge_cells("K3:M3")
+        ws["K3"] = "Otomotiv Parçaları San. ve Tic. A.Ş."
+        ws["K3"].font = meta_bold_font
+        ws["K3"].alignment = Alignment(horizontal="right", vertical="center")
 
-        for c in range(1, 10):
-            ws.cell(3, c).border = meta_border
-
-        # Satır 4: Makine ve Teçhizat Adı
+        # Satır 4: Makine ve Teçhizat Adı (A4:M4)
         ws.row_dimensions[4].height = 22
-        ws.merge_cells("A4:I4")
+        ws.merge_cells("A4:M4")
         machine_code = getattr(machine, "code", "") or ""
         machine_name = getattr(machine, "name", "") or ""
         machine_label = f"{machine_code} - {machine_name}".strip(" -")
-        ws["A4"] = f"  Makine ve Teçhizat Adı:  {machine_label}"
+        ws["A4"] = f"  Makine ve Teçhizat Adı: {machine_label}"
         ws["A4"].font = meta_bold_font
         ws["A4"].alignment = Alignment(horizontal="left", vertical="center")
-        for c in range(1, 10):
-            ws.cell(4, c).border = meta_border
 
-        # Satır 5: Boş ayırıcı
-        ws.row_dimensions[5].height = 8
+        # Satır 5: Boş satır
+        ws.row_dimensions[5].height = 10
 
-        # Satır 6: Tablo Başlıkları
-        ws.row_dimensions[6].height = 34
-        headers = [
-            "TARİH",
-            "ARIZA VE YAPILAN\nİŞİN TANIMI",
-            "YAPILAN İŞİN\nAÇIKLAMASI",
-            "DEĞİŞEN\nPARÇA",
-            "KALIP BASKI\nSAYISI",
-            "ARIZA-KAIZEN\nBİLDİRİM NO",
-            "KULLANILAN\nA/S.DAHİLİ",
-            "İŞİ\nYAPAN",
-            "ONAY",
-        ]
-        for idx, h_text in enumerate(headers, start=1):
-            cell = ws.cell(6, idx, value=h_text)
-            cell.font = tbl_hdr_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            cell.border = header_border
+        # Satır 6 & 7: Birebir 2 satırlı resmi tablo başlıkları
+        ws.row_dimensions[6].height = 18
+        ws.row_dimensions[7].height = 18
 
-        # Satır 7+: Veri Satırları (en az 15 boş/dolu satır olacak şekilde form düzeni)
-        total_rows = max(len(rows), 15)
+        # A6:B7 -> TARİH
+        ws.merge_cells("A6:B7")
+        ws["A6"] = "TARİH"
+
+        # C6:D6 -> ARIZA VE YAPILAN, C7:D7 -> İŞİN TANIMI
+        ws.merge_cells("C6:D6")
+        ws["C6"] = "ARIZA VE YAPILAN"
+        ws.merge_cells("C7:D7")
+        ws["C7"] = "İŞİN TANIMI"
+
+        # E6:F7 -> YAPILAN İŞİN AÇIKLAMASI
+        ws.merge_cells("E6:F7")
+        ws["E6"] = "YAPILAN İŞİN AÇIKLAMASI"
+
+        # G6:H6 -> DEĞİŞEN , G7:H7 -> PARÇA
+        ws.merge_cells("G6:H6")
+        ws["G6"] = "DEĞİŞEN "
+        ws.merge_cells("G7:H7")
+        ws["G7"] = "PARÇA"
+
+        # I6:I7 -> KALIP BASKI SAYISI
+        ws.merge_cells("I6:I7")
+        ws["I6"] = "KALIP BASKI SAYISI"
+
+        # J6 -> ARIZA-KAIZEN, J7 -> BİLDİRİM NO
+        ws["J6"] = "ARIZA-KAIZEN"
+        ws["J7"] = "BİLDİRİM NO"
+
+        # K6 -> KULLANILAN, K7 -> A/S.DAHİLİ
+        ws["K6"] = "KULLANILAN"
+        ws["K7"] = "A/S.DAHİLİ"
+
+        # L6 -> İŞİ, L7 -> YAPAN
+        ws["L6"] = "İŞİ"
+        ws["L7"] = "YAPAN"
+
+        # M6:M7 -> ONAY
+        ws.merge_cells("M6:M7")
+        ws["M6"] = "ONAY"
+
+        for r in (6, 7):
+            for c in range(1, 14):
+                cell = ws.cell(r, c)
+                cell.font = tbl_hdr_font
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                if c in (1, 2, 5, 6, 9, 13):
+                    cell.border = hdr_full_border
+                else:
+                    cell.border = hdr_top_border if r == 6 else hdr_bot_border
+
+        # Satır 8+: Veri Satırları (en az 20 satırlık resmi çizelge)
+        total_rows = max(len(rows), 20)
         for i in range(total_rows):
-            r_idx = 7 + i
+            r_idx = 8 + i
             ws.row_dimensions[r_idx].height = 24
+            ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=2)
+            ws.merge_cells(start_row=r_idx, start_column=3, end_row=r_idx, end_column=4)
+            ws.merge_cells(start_row=r_idx, start_column=5, end_row=r_idx, end_column=6)
+            ws.merge_cells(start_row=r_idx, start_column=7, end_row=r_idx, end_column=8)
+
             row_obj = rows[i] if i < len(rows) else None
-            values = [
-                getattr(row_obj, "date_str", "") if row_obj else "",
-                getattr(row_obj, "fault_work_title", "") if row_obj else "",
-                getattr(row_obj, "work_description", "") if row_obj else "",
-                getattr(row_obj, "replaced_part", "") if row_obj else "",
-                getattr(row_obj, "mold_shot_count", "") if row_obj else "",
-                getattr(row_obj, "notification_no", "") if row_obj else "",
-                getattr(row_obj, "used_material", "") if row_obj else "",
-                getattr(row_obj, "performed_by", "") if row_obj else "",
-                getattr(row_obj, "approved_by", "") if row_obj else "",
+            col_values = [
+                (1, getattr(row_obj, "date_str", "") if row_obj else "", "center"),
+                (3, getattr(row_obj, "fault_work_title", "") if row_obj else "", "left"),
+                (5, getattr(row_obj, "work_description", "") if row_obj else "", "left"),
+                (7, getattr(row_obj, "replaced_part", "") if row_obj else "", "left"),
+                (9, getattr(row_obj, "mold_shot_count", "") if row_obj else "", "center"),
+                (10, getattr(row_obj, "notification_no", "") if row_obj else "", "center"),
+                (11, getattr(row_obj, "used_material", "") if row_obj else "", "left"),
+                (12, getattr(row_obj, "performed_by", "") if row_obj else "", "center"),
+                (13, getattr(row_obj, "approved_by", "") if row_obj else "", "center"),
             ]
-            for c_idx, val in enumerate(values, start=1):
-                cell = ws.cell(r_idx, c_idx, value=val or "")
+            for col_num, val, horiz in col_values:
+                cell = ws.cell(r_idx, col_num, value=val or "")
                 cell.font = data_font
-                horiz = "center" if c_idx in (1, 5, 6, 8, 9) else "left"
                 cell.alignment = Alignment(horizontal=horiz, vertical="center", wrap_text=True)
-                cell.border = cell_border
+
+            for c in range(1, 14):
+                ws.cell(r_idx, c).border = cell_border
 
         safe_code = re.sub(r"[^A-Za-z0-9_-]+", "_", machine_code).strip("_") or "MAKINE"
         export_filename = f"FR-PE-0006_{safe_code}.xlsx"
@@ -887,7 +922,8 @@ class ExcelService:
         title: Optional[str] = None
     ) -> Tuple[bytes, str]:
         """
-        FR-PE-0446 PERİYODİK BAKIM KONTROL LİSTESİ formatında Excel (.xlsx) üretir.
+        FR-PE-0446 PERİYODİK BAKIM KONTROL LİSTESİ resmi denetim formatında
+        (20 sütun A..T, satır 1..32 birebir hücre yerleşimi) Excel (.xlsx) üretir.
         """
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -896,16 +932,19 @@ class ExcelService:
         ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
         ws.page_setup.paperSize = ws.PAPERSIZE_A4
         ws.page_setup.fitToWidth = 1
-        ws.page_setup.fitToHeight = 0
+        ws.page_setup.fitToHeight = 1
         ws.sheet_properties.pageSetUpPr.fitToPage = True
 
-        # Sütunlar: A=NO, B=KONTROL PARAMETRELERİ, C=PERİYOD, D..O=12 AY, P=AÇIKLAMALAR (16 sütun)
-        ws.column_dimensions["A"].width = 6.0
-        ws.column_dimensions["B"].width = 48.0
-        ws.column_dimensions["C"].width = 10.0
-        for col_idx in range(4, 16):
-            ws.column_dimensions[get_column_letter(col_idx)].width = 9.5
-        ws.column_dimensions["P"].width = 24.0
+        # Resmi 20 sütun (A..T) genişlikleri:
+        # A=NO, B:E=KONTROL PARAMETRELERİ (4 sütun birleşik -> 48), F=PERİYOD, G..R=12 AY, S:T=AÇIKLAMALAR (2 sütun birleşik -> 24)
+        ws.column_dimensions["A"].width = 5.5
+        for col_letter in ("B", "C", "D", "E"):
+            ws.column_dimensions[col_letter].width = 12.0
+        ws.column_dimensions["F"].width = 9.5
+        for col_idx in range(7, 19):  # G (7) .. R (18)
+            ws.column_dimensions[get_column_letter(col_idx)].width = 8.5
+        ws.column_dimensions["S"].width = 12.0
+        ws.column_dimensions["T"].width = 12.0
 
         thin = Side(border_style="thin", color="000000")
         medium = Side(border_style="medium", color="000000")
@@ -920,110 +959,107 @@ class ExcelService:
         check_font = Font(name="Calibri", size=11, bold=True, color="047857")
         fail_font = Font(name="Calibri", size=11, bold=True, color="DC2626")
 
-        title_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
-        hdr_fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
-        sub_fill = PatternFill(start_color="EEF2FF", end_color="EEF2FF", fill_type="solid")
-
         machine_code = getattr(machine, "code", "") or ""
         machine_name = getattr(machine, "name", "") or ""
         form_title = (title or f"{machine_code} {machine_name} PERİYODİK BAKIM KONTROL LİSTESİ").strip()
 
-        # Satır 1: Ana Başlık
-        ws.row_dimensions[1].height = 28
-        ws.merge_cells("A1:P1")
+        # Satır 1: Ana Başlık (A1:T1)
+        ws.row_dimensions[1].height = 26
+        ws.merge_cells("A1:T1")
         ws["A1"] = form_title
         ws["A1"].font = title_font
         ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-        ws["A1"].fill = title_fill
-        for c in range(1, 17):
-            ws.cell(1, c).border = header_border
 
-        ws.row_dimensions[2].height = 6
+        # Satır 2: Boş satır
+        ws.row_dimensions[2].height = 8
 
-        # Satır 3: Meta Bilgiler
+        # Satır 3: Resmi Meta Bilgiler (A3, D3, H3, Q3:T3 -> sağda Otomotiv Parçaları San. ve Tic. A.Ş.)
         ws.row_dimensions[3].height = 20
-        ws.merge_cells("A3:B3")
+        ws.merge_cells("A3:C3")
         ws["A3"] = "Sayfa no: 1 / 1"
         ws["A3"].font = meta_font
         ws["A3"].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws.merge_cells("C3:E3")
-        ws["C3"] = revision or "Rev. 9.10.2026"
-        ws["C3"].font = meta_font
-        ws["C3"].alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells("D3:G3")
+        ws["D3"] = revision or "Rev. 9.10.2026"
+        ws["D3"].font = meta_font
+        ws["D3"].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws.merge_cells("F3:K3")
-        ws["F3"] = f"Doküman no: {doc_no or 'FR-PE-0446'}  ({year})"
-        ws["F3"].font = meta_bold
-        ws["F3"].alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells("H3:P3")
+        ws["H3"] = f"Doküman no: {doc_no or 'FR-PE-0446'}"
+        ws["H3"].font = meta_font
+        ws["H3"].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws.merge_cells("L3:P3")
-        ws["L3"] = "Otomotiv Parçaları San. ve Tic. A.Ş."
-        ws["L3"].font = meta_bold
-        ws["L3"].alignment = Alignment(horizontal="right", vertical="center")
-        for c in range(1, 17):
-            ws.cell(3, c).border = cell_border
+        ws.merge_cells("Q3:T3")
+        ws["Q3"] = "Otomotiv Parçaları San. ve Tic. A.Ş."
+        ws["Q3"].font = meta_bold
+        ws["Q3"].alignment = Alignment(horizontal="right", vertical="center")
 
-        # Satır 4-5: Tablo Başlıkları
-        ws.row_dimensions[4].height = 22
-        ws.row_dimensions[5].height = 22
+        # Satır 4-5: Resmi Tablo Başlıkları
+        ws.row_dimensions[4].height = 20
+        ws.row_dimensions[5].height = 20
 
         ws.merge_cells("A4:A5")
         ws["A4"] = "NO:"
-        ws.merge_cells("B4:B5")
+        ws.merge_cells("B4:E5")
         ws["B4"] = "KONTROL PARAMETRELERİ"
-        ws.merge_cells("C4:C5")
-        ws["C4"] = "PERİYOD"
-        ws.merge_cells("D4:O4")
-        ws["D4"] = "BAKIM YAPILAN AY VE HAFTALAR"
-        ws.merge_cells("P4:P5")
-        ws["P4"] = "AÇIKLAMALAR"
+        ws.merge_cells("F4:F5")
+        ws["F4"] = "PERİYOD"
+        ws.merge_cells("G4:R4")
+        ws["G4"] = "BAKIM YAPILAN AY VE HAFTALAR"
+        ws.merge_cells("S4:T5")
+        ws["S4"] = "AÇIKLAMALAR"
 
-        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=7):  # G (7) .. R (18)
             ws.cell(5, idx, value=m_name)
 
         for r in (4, 5):
-            for c in range(1, 17):
+            for c in range(1, 21):
                 cell = ws.cell(r, c)
                 cell.font = hdr_font
-                cell.fill = hdr_fill
                 cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                 cell.border = header_border
 
-        # Satır 6: BAKIM HAFTA VE TARİH
+        # Satır 6: BAKIM HAFTA VE TARİH (A6 boş, B6:F6 birleşik, G6..R6 aylar, S6:T6 birleşik)
         ws.row_dimensions[6].height = 22
         ws["A6"] = ""
+        ws.merge_cells("B6:F6")
         ws["B6"] = "BAKIM HAFTA VE TARİH"
         ws["B6"].font = meta_bold
         ws["B6"].alignment = Alignment(horizontal="left", vertical="center")
-        ws["C6"] = ""
+        ws.merge_cells("S6:T6")
+
         dates_map = sheet_data.get("dates") or {}
-        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=7):
             c_cell = ws.cell(6, idx, value=str(dates_map.get(m_name, "") or ""))
             c_cell.font = data_font
             c_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        for c in range(1, 17):
-            ws.cell(6, c).fill = sub_fill
+
+        for c in range(1, 21):
             ws.cell(6, c).border = cell_border
 
-        # Satır 7+: Parametre Satırları
+        # Satır 7+: Parametre Satırları (1..23+)
         rows = sheet_data.get("rows") or []
         cur_row = 7
         for i, row_item in enumerate(rows, start=1):
             ws.row_dimensions[cur_row].height = 28
-            ws.cell(cur_row, 1, value=row_item.get("no", i)).alignment = Alignment(horizontal="center", vertical="center")
-            ws.cell(cur_row, 1).font = meta_bold
+            ws.merge_cells(start_row=cur_row, start_column=2, end_row=cur_row, end_column=5)
+            ws.merge_cells(start_row=cur_row, start_column=19, end_row=cur_row, end_column=20)
+
+            no_cell = ws.cell(cur_row, 1, value=row_item.get("no", i))
+            no_cell.font = meta_bold
+            no_cell.alignment = Alignment(horizontal="center", vertical="center")
 
             p_cell = ws.cell(cur_row, 2, value=str(row_item.get("parameter", "") or ""))
             p_cell.font = data_font
             p_cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-            per_cell = ws.cell(cur_row, 3, value=str(row_item.get("period", "") or ""))
+            per_cell = ws.cell(cur_row, 6, value=str(row_item.get("period", "") or ""))
             per_cell.font = data_font
             per_cell.alignment = Alignment(horizontal="center", vertical="center")
 
             months_map = row_item.get("months") or {}
-            for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+            for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=7):
                 val = str(months_map.get(m_name, "") or "")
                 m_cell = ws.cell(cur_row, idx, value=val)
                 if val == "✓":
@@ -1034,52 +1070,52 @@ class ExcelService:
                     m_cell.font = data_font
                 m_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-            n_cell = ws.cell(cur_row, 16, value=str(row_item.get("notes", "") or ""))
+            n_cell = ws.cell(cur_row, 19, value=str(row_item.get("notes", "") or ""))
             n_cell.font = data_font
             n_cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-            for c in range(1, 17):
+            for c in range(1, 21):
                 ws.cell(cur_row, c).border = cell_border
             cur_row += 1
 
-        # KONTROLÜ YAPAN satırı
+        # KONTROLÜ YAPAN satırı (A:F birleşik, G..R aylar, S:T birleşik)
         ws.row_dimensions[cur_row].height = 24
-        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=3)
-        ws.cell(cur_row, 1, value="KONTROLÜ YAPAN").font = meta_bold
+        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=6)
+        ws.merge_cells(start_row=cur_row, start_column=19, end_row=cur_row, end_column=20)
+        ws.cell(cur_row, 1, value="KONTROLÜ YAPAN ").font = meta_bold
         ws.cell(cur_row, 1).alignment = Alignment(horizontal="left", vertical="center")
         perf_map = sheet_data.get("performed_by") or {}
-        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=7):
             c_cell = ws.cell(cur_row, idx, value=str(perf_map.get(m_name, "") or ""))
             c_cell.font = data_font
             c_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        for c in range(1, 17):
+        for c in range(1, 21):
             ws.cell(cur_row, c).border = cell_border
-            ws.cell(cur_row, c).fill = title_fill
         cur_row += 1
 
-        # ONAY satırı
+        # ONAY satırı (A:F birleşik, G..R aylar, S:T birleşik)
         ws.row_dimensions[cur_row].height = 24
-        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=3)
+        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=6)
+        ws.merge_cells(start_row=cur_row, start_column=19, end_row=cur_row, end_column=20)
         ws.cell(cur_row, 1, value="ONAY").font = meta_bold
         ws.cell(cur_row, 1).alignment = Alignment(horizontal="left", vertical="center")
         appr_map = sheet_data.get("approved_by") or {}
-        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=4):
+        for idx, m_name in enumerate(cls.PERIODIC_MONTHS, start=7):
             c_cell = ws.cell(cur_row, idx, value=str(appr_map.get(m_name, "") or ""))
             c_cell.font = data_font
             c_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        for c in range(1, 17):
+        for c in range(1, 21):
             ws.cell(cur_row, c).border = cell_border
-            ws.cell(cur_row, c).fill = title_fill
         cur_row += 1
 
-        # Dipnot
+        # Dipnot (A:T birleşik)
         ws.row_dimensions[cur_row].height = 20
-        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=16)
+        ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=20)
         note_cell = ws.cell(
             cur_row, 1,
             value="NOT: KONTROL EDİLEN HER PAREMETRENİN KARŞINDAKİ KUTUCUĞA BAKIM YAPTIĞI AYA AİT HAFTA NUMARASI YAZILACAKTIR."
         )
-        note_cell.font = Font(name="Calibri", size=9, italic=True, bold=True)
+        note_cell.font = Font(name="Calibri", size=9, bold=True)
         note_cell.alignment = Alignment(horizontal="left", vertical="center")
 
         safe_code = re.sub(r"[^A-Za-z0-9_-]+", "_", machine_code).strip("_") or "MAKINE"
